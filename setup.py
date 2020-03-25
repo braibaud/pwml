@@ -4,7 +4,7 @@ from setuptools import find_packages
 long_description = '''
 Pwml is a high-level machine learning API, written in Python.
 Pwnl stands for Python Wrappers for Machine Learning.
-Pwml is compatible with Python 3.7 and is distributed under the MIT license.
+Pwml is compatible with Python 3.6 and is distributed under the MIT license.
 '''
 
 setup(
@@ -22,7 +22,7 @@ setup(
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',
         'License :: OSI Approved :: MIT License',
-        'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.6',
         'Topic :: Software Development :: Libraries',
         'Topic :: Software Development :: Libraries :: Python Modules',
         'Topic :: Scientific/Engineering :: Artificial Intelligence'
@@ -32,5 +32,6 @@ setup(
         'pillow>=7.0.0',
         'pymssql>=2.0.0',
         'pandas>=1.0.0',
-        'urllib3>=1.25.0'],
+        'urllib3>=1.25.0',
+        'scikit-learn>=0.22.0'],
     packages=find_packages())
