@@ -9,6 +9,4 @@ from .utilities import httphelpers
 from .utilities import imagehelpers
 from .utilities import mssqlhelpers
 
-from .services import modelhosting
-
 __version__ = '0.9.0'
