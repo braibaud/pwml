@@ -9,4 +9,4 @@ from .utilities import httphelpers
 from .utilities import imagehelpers
 from .utilities import mssqlhelpers
 
-__version__ = '0.9.0'
+__version__ = '0.9.2'

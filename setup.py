@@ -9,11 +9,11 @@ Pwml is compatible with Python 3.6 and is distributed under the MIT license.
 
 setup(
     name='Pwml',
-    version='0.9.0',
+    version='0.9.2',
     description='Python Wrappers for Machine Learning',
     long_description=long_description,
     author='Benjamin Raibaud',
-    author_email='benjamin.raibaud@gmail.com',
+    author_email='braibaud@gmail.com',
     url='https://github.com/braibaud/pwml',
     license='MIT',
     classifiers=[
@@ -29,9 +29,12 @@ setup(
     ],
     install_requires=[
         'numpy>=1.18.0',
-        'pillow>=7.0.0',
+        'pillow>=5.0.0',
         'pymssql>=2.0.0',
         'pandas>=1.0.0',
         'urllib3>=1.25.0',
-        'scikit-learn>=0.22.0'],
+        'scikit-learn>=0.22.0',
+        'tensorflow-hub>=0.6.0',
+        'tensorflow>=2.0.0'],
+    python_requires='>=3.6',
     packages=find_packages())
