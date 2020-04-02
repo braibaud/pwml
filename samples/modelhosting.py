@@ -6,6 +6,9 @@ import flask_restful.reqparse as flr_r
 import flask_cors as flc
 import argparse as ap
 import traceback as tb
+import os
+
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1' 
 
 import pwml as pw
 from pwml.classifiers import hierarchical as hc
@@ -40,7 +43,9 @@ class Hosting(flr.Resource):
 
     def __init__(self, **kwargs):
 
-        self.model = Statics.g_models[kwargs['model_path']]
+        print('__init__ for model "{0}"'.format(kwargs['model_id']))
+
+        self.model = Statics.g_models[kwargs['model_id']]['model']
         self.reqparse = flr_r.RequestParser()
 
         for feature in self.model.input_features:
@@ -51,7 +56,7 @@ class Hosting(flr.Resource):
                 required=True,
                 help='"'+ feature.feature_name +'" is mandatory ({error_msg})')
 
-        super(Hosting, self).__init__(**kwargs)
+        super(Hosting, self).__init__()
 
     def post(self):
 
@@ -89,9 +94,39 @@ def configure_models():
 
     print('Loading models...')
 
-    for model_path in Statics.g_arguments.modelpath:
-        Statics.g_models[model_path] = hc.HierarchicalClassifierModel.load_model(
-            filepath=model_path)
+    for idx, text in enumerate(Statics.g_arguments.models):
+
+        if '|' not in text:
+            print('Model #{0} parameter is invalid (missing "|").'.format(idx))
+            continue
+    
+        parts = text.split('|')
+
+        if len(parts) != 2:
+            print('Model #{0} parameter is invalid (invalid number of "|").'.format(idx))
+            continue
+
+        model_id = parts[0].strip().lower()
+        model_path = parts[1]
+
+        print('Model #{0} parameters:'.format(idx))
+        print('  id: "{0}"'.format(model_id))
+        print('  path: "{0}"'.format(model_path))
+
+        if not os.path.exists(model_path):
+            print('Model #{0} (id: "{1}") parameter is invalid (model file missing at "{2}").'.format(idx, model_id, model_path))
+            continue
+
+        if model_id in Statics.g_models:
+            print('Model #{0} (id: "{1}") has already been defined.'.format(idx, model_id))
+            continue
+
+        Statics.g_models[model_id] = {
+            'id': model_id,
+            'path': model_path,
+            'model': hc.HierarchicalClassifierModel.load_model(
+                filepath=model_path)
+        }
 
 
 def configure_api():
@@ -103,28 +138,29 @@ def configure_api():
         Statics.g_app, 
         resources={r'*': {'origins': '*'}})
 
-    Statics.g_api = flr.Api(Statics.g_app)
+    Statics.g_api = flr.Api(
+        app=Statics.g_app,
+        catch_all_404s=True)
 
     Statics.g_api.add_resource(
         Info, 
-        '/info')
+        '/info',
+        endpoint='info')
 
-    for model_path, model in Statics.g_models.items():
+    for _, model in Statics.g_models.items():
+
+        url = '/api/{0}'.format(model['id'])
+        endpoint = '{0}'.format(model['id'])
+
         Statics.g_api.add_resource(
-            resource=Hosting, 
-            urls='/{0}/{1}'.format(
-                model.model_name,
-                model.experiment_name),
-            endpoint='***{0}${1}***'.format(
-                model.model_name,
-                model.experiment_name),
-            resource_class_kwargs={'model_path': model_path})
+            Hosting, 
+            url,
+            endpoint=endpoint,
+            resource_class_kwargs={'model_id': model['id']})
 
         print('Serving model "{0}" from "{1}"'.format(
-            model_path,
-            '/{0}/{1}'.format(
-                model.model_name,
-                model.experiment_name)))
+            model['id'],
+            url))
 
 
 if __name__ == '__main__':
@@ -147,11 +183,11 @@ if __name__ == '__main__':
         help='The port the web-service is listening on')
 
     parser.add_argument(
-        '--modelpath',
+        '--models',
         nargs='+',
         type=str,
         required=True,
-        help='A list of paths of models to load.')
+        help='A list of "model-id|model-path" to load.')
 
     Statics.g_arguments = parser.parse_args()
 
@@ -161,4 +197,4 @@ if __name__ == '__main__':
     Statics.g_app.run(
         host=Statics.g_arguments.host,
         port=Statics.g_arguments.port,
-        debug=False)
+        debug=True)
