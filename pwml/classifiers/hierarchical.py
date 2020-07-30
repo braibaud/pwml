@@ -86,18 +86,20 @@ class HierarchyElement(object):
     def get_class_name(self, y):
         return self.classes[y]
 
-    def tune_classifiers(self, test_size, classifiers, min_pca):
+    def tune_classifiers(self, test_size, classifiers, min_pca, search_n_jobs):
 
         self._tune_classifiers(
             test_size=test_size,
             classifiers=classifiers,
-            min_pca=min_pca)
+            min_pca=min_pca,
+            search_n_jobs=search_n_jobs)
 
         for child in self.children:
             child.tune_classifiers(
                 test_size=test_size,
                 classifiers=classifiers,
-                min_pca=min_pca)
+                min_pca=min_pca,
+                search_n_jobs=search_n_jobs)
 
     def score(self, X, y):
         if self.estimator is None:
@@ -183,7 +185,8 @@ class HierarchyElement(object):
         self, 
         test_size,
         classifiers,
-        min_pca):
+        min_pca,
+        search_n_jobs):
 
         print('Tuning classifiers for output-feature "{0}" for path "{1}".'.format(
             self.output_feature.feature_name,
@@ -204,9 +207,28 @@ class HierarchyElement(object):
                 random_state=0,
                 test_size=test_size)
 
+            while X_tr.shape[0] < len(self.classes):
+                print('    -> Adjusting training dataset size. Current size: "{0}"; Number of classes "{1}".'.format(
+                    X_tr.shape[0],
+                    len(self.classes)))
+
+                X_tr = np.append(X_tr, X_tr.copy())
+                y_tr = np.append(y_tr, y_tr.copy())
+
+            while X_te.shape[0] < len(self.classes):
+                print('    -> Adjusting testing dataset size. Current size: "{0}"; Number of classes "{1}".'.format(
+                    X_te.shape[0],
+                    len(self.classes)))
+
+                X_te = np.append(X_te, X_te.copy())
+                y_te = np.append(y_te, y_te.copy())
+
             for classifier_name, classifier_value in classifiers.items():
 
                 if X_tr.shape[0] > 10000 and classifier_name == 'KNeighborsClassifier':
+                    print('    -> Skipping KNeighborsClassifier as training set too large ({0} > 10000)'.format(
+                        X_tr.shape[0]))
+
                     continue
 
                 print('    -> Tuning "{0}"'.format(classifier_name))
@@ -511,6 +533,7 @@ class HierarchicalClassifierModel(object):
         self, 
         test_size=.2, 
         min_pca=256,
+        search_n_jobs=2,
         classifiers={
             'SGDClassifier': {
                 'alpha': np.logspace(
@@ -535,7 +558,8 @@ class HierarchicalClassifierModel(object):
         self.hierarchy.tune_classifiers(
             test_size=test_size,
             classifiers=classifiers,
-            min_pca=min_pca)
+            min_pca=min_pca,
+            search_n_jobs=search_n_jobs)
 
     def register_embedder(self, embedder):
         self.embedders[embedder.input_type] = embedder
