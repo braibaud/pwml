@@ -8,7 +8,26 @@ import argparse as ap
 import traceback as tb
 import os
 
+# Comment next line to avoid disabling CUDA devices
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1' 
+
+# Specify TensorflowHub cache location (comment next line to use default location)
+os.environ['TFHUB_CACHE_DIR'] = 'C:\\DEV\\TensorFlowCache'
+
+
+# -----------------------------------------------------------------
+# Example of batch file used to run the web-service (on port 5000):
+#   * activates the conda environment
+#   * start the web-service & load 2 models "v1/L15" and "v1/BRAND"
+#   * deactivate the conda environment on termination
+# -----------------------------------------------------------------
+#
+# call C:\ProgramData\Anaconda3\condabin\activate.bat exts-tf2-gpu
+# python.exe C:\DEV\tf2\modelhosting.py --host 0.0.0.0 --port 5000 --models "v1/L15|C:\DEV\tf2\global-plan-hierarchy-fulltext_MODEL.p" "v1/BRAND|C:\DEV\tf2\global-plan-brand-fulltext_MODEL.p"
+# call C:\ProgramData\Anaconda3\condabin\deactivate.bat
+#
+# -----------------------------------------------------------------
+
 
 import pwml as pw
 from pwml.classifiers import hierarchical as hc
