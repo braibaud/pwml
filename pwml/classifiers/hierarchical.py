@@ -1,5 +1,6 @@
 import os as os
 import io as io
+import math as m
 import pandas as pd
 import numpy as np
 import copy as cp
@@ -208,6 +209,14 @@ class HierarchyElement(object):
                 test_size=test_size)
 
             while X_tr.shape[0] < len(self.classes):
+                print('    -> Adjusting training dataset size. Current size: "{0}"; Number of classes "{1}".'.format(
+                    X_tr.shape[0],
+                    len(self.classes)))
+
+                X_tr = np.append(X_tr, X_tr.copy())
+                y_tr = np.append(y_tr, y_tr.copy())
+
+            while m.floor(X_tr.shape[0] / min(X_tr.shape[0], 5)) < len(self.classes):
                 print('    -> Adjusting training dataset size. Current size: "{0}"; Number of classes "{1}".'.format(
                     X_tr.shape[0],
                     len(self.classes)))
