@@ -208,12 +208,12 @@ class HierarchyElement(object):
                 random_state=0,
                 test_size=test_size)
 
-            print('    -> Current size: "{0}"; Number of classes "{1}"; Stratified-Size "{2}".'.format(
+            print('    -> Current (train) size: "{0}"; Number of classes "{1}"; Stratified-Size "{2}".'.format(
                 X_tr.shape[0],
                 len(self.classes),
                 m.floor(X_tr.shape[0] / min(X_tr.shape[0], 5))))
 
-            while X_tr.shape[0] < len(self.classes):
+            while X_tr.shape[0] < 2*len(self.classes):
                 print('    -> Adjusting training dataset size. Current size: "{0}"; Number of classes "{1}".'.format(
                     X_tr.shape[0],
                     len(self.classes)))
@@ -221,7 +221,7 @@ class HierarchyElement(object):
                 X_tr = np.append(X_tr, X_tr.copy())
                 y_tr = np.append(y_tr, y_tr.copy())
 
-            while m.floor(X_tr.shape[0] / min(X_tr.shape[0], 5)) < len(self.classes):
+            while m.floor(X_tr.shape[0] / min(X_tr.shape[0], 5)) < 2*len(self.classes):
                 print('    -> Adjusting training dataset size. Current size: "{0}"; Number of classes "{1}".'.format(
                     X_tr.shape[0],
                     len(self.classes)))
@@ -229,7 +229,7 @@ class HierarchyElement(object):
                 X_tr = np.append(X_tr, X_tr.copy())
                 y_tr = np.append(y_tr, y_tr.copy())
 
-            while X_te.shape[0] < len(self.classes):
+            while X_te.shape[0] < 2*len(self.classes):
                 print('    -> Adjusting testing dataset size. Current size: "{0}"; Number of classes "{1}".'.format(
                     X_te.shape[0],
                     len(self.classes)))
