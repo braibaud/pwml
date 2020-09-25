@@ -218,24 +218,24 @@ class HierarchyElement(object):
                     X_tr.shape[0],
                     len(self.classes)))
 
-                X_tr = np.append(X_tr, X_tr.copy())
-                y_tr = np.append(y_tr, y_tr.copy())
+                X_tr = np.append(X_tr, X_tr.copy(), axis=0)
+                y_tr = np.append(y_tr, y_tr.copy(), axis=0)
 
             while m.floor(X_tr.shape[0] / min(X_tr.shape[0], 5)) < 2*len(self.classes):
                 print('    -> Adjusting training dataset size. Current size: "{0}"; Number of classes "{1}".'.format(
                     X_tr.shape[0],
                     len(self.classes)))
 
-                X_tr = np.append(X_tr, X_tr.copy())
-                y_tr = np.append(y_tr, y_tr.copy())
+                X_tr = np.append(X_tr, X_tr.copy(), axis=0)
+                y_tr = np.append(y_tr, y_tr.copy(), axis=0)
 
             while X_te.shape[0] < 2*len(self.classes):
                 print('    -> Adjusting testing dataset size. Current size: "{0}"; Number of classes "{1}".'.format(
                     X_te.shape[0],
                     len(self.classes)))
 
-                X_te = np.append(X_te, X_te.copy())
-                y_te = np.append(y_te, y_te.copy())
+                X_te = np.append(X_te, X_te.copy(), axis=0)
+                y_te = np.append(y_te, y_te.copy(), axis=0)
 
             for classifier_name, classifier_value in classifiers.items():
 
