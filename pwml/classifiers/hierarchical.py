@@ -208,6 +208,11 @@ class HierarchyElement(object):
                 random_state=0,
                 test_size=test_size)
 
+            print('    -> Current size: "{0}"; Number of classes "{1}"; Stratified-Size "{2}".'.format(
+                X_tr.shape[0],
+                len(self.classes),
+                m.floor(X_tr.shape[0] / min(X_tr.shape[0], 5))))
+
             while X_tr.shape[0] < len(self.classes):
                 print('    -> Adjusting training dataset size. Current size: "{0}"; Number of classes "{1}".'.format(
                     X_tr.shape[0],
