@@ -22,9 +22,8 @@ class TextEmbedder(object):
         if data is None:
             return self._empty
         
-        if self.input_size is not None:
-            if len(data) > self.input_size:
-                data = data[:self.input_size]
+        if self.input_size is not None and len(data) > self.input_size:
+            data = data[:self.input_size]
 
         return skp.normalize(
             self.model([data]), 
