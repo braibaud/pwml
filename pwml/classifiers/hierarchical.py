@@ -260,13 +260,12 @@ class HierarchyElement(object):
                 steps = [
                     ('std', skp.StandardScaler())]
 
-                if min_pca is not None:
-                    if X_tr.shape[0] > X_tr.shape[1] and X_tr.shape[1] > min_pca:
-                        steps.append(
-                            ('pca', skd.PCA(
-                                random_state=0)))
+                if min_pca is not None and X_tr.shape[0] > X_tr.shape[1] and X_tr.shape[1] > min_pca:
+                    steps.append(
+                        ('pca', skd.PCA(
+                            random_state=0)))
 
-                        dict_grid['pca__n_components'] = HierarchyElement.get_pca_nb_components(min_pca, X_tr.shape[1], 3)
+                    dict_grid['pca__n_components'] = HierarchyElement.get_pca_nb_components(min_pca, X_tr.shape[1], 3)
 
                 if classifier_name == 'SGDClassifier':
                     steps.append(
@@ -654,17 +653,17 @@ class HierarchicalClassifierModel(object):
         # load the data
         for r in _data.itertuples(index=True):
             
-            input = r._asdict()
+            r_dict = r._asdict()
             
-            if not self.valid_input(input):
+            if not self.valid_input(r_dict):
                 raise OverflowError(
-                    'Invalid input (missing one or more features): "{0}".'.format(input))
+                    'Invalid input (missing one or more features): "{0}".'.format(r_dict))
 
             x.append(
-                self._get_vector(input, input['Index'], cache))
+                self._get_vector(r_dict, r_dict['Index'], cache))
 
             y.append(
-                element.classes.index(input[element.output_feature.feature_name]))
+                element.classes.index(r_dict[element.output_feature.feature_name]))
 
             index = index + 1
         

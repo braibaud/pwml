@@ -4,6 +4,8 @@ import flask as fl
 import flask_restful as flr
 import flask_restful.reqparse as flr_r
 import flask_cors as flc
+import flask_wtf.csrf as flwc
+
 import argparse as ap
 import traceback as tb
 import os
@@ -153,9 +155,13 @@ def configure_api():
     Statics.g_app = fl.Flask('apps')
     Statics.g_app.config['BUNDLE_ERRORS'] = True
 
+    Statics.g_csrf = flwc.CSRFProtect()
+    Statics.g_csrf.init_app(
+        Statics.g_app)
+
     Statics.g_cors = flc.CORS(
         Statics.g_app, 
-        resources={r'*': {'origins': '*'}})
+        resources={r'/*': {'origins': '*', 'send_wildcard': 'False'}})
 
     Statics.g_api = flr.Api(
         app=Statics.g_app,
