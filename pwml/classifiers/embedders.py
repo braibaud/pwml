@@ -30,6 +30,28 @@ class TextEmbedder(object):
             axis=1)[0]
 
 
+class LongTextEmbedder(object):
+
+    def __init__(self, input_size=None, output_size=512, model_url='https://tfhub.dev/google/universal-sentence-encoder-large/5'):
+        self.input_type = 'longtext'
+        self.input_size = input_size
+        self.output_size = output_size
+        self.model = hu.load(model_url)
+
+        self._empty = np.array([0]*output_size, np.float64)
+
+    def embed_data(self, data, feature):
+        if data is None:
+            return self._empty
+        
+        if self.input_size is not None and len(data) > self.input_size:
+            data = data[:self.input_size]
+
+        return skp.normalize(
+            self.model([data]), 
+            axis=1)[0]
+
+
 class ImageUrlEmbedder(object):
 
     def __init__(self, input_size=None, output_size=2048, model_url='https://tfhub.dev/google/imagenet/inception_v3/feature_vector/4'):

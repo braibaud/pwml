@@ -8,5 +8,6 @@ from .utilities import filehelpers
 from .utilities import httphelpers
 from .utilities import imagehelpers
 from .utilities import mssqlhelpers
+from .utilities import classificationhelpers
 
-__version__ = '0.9.7'
+__version__ = '0.9.8'

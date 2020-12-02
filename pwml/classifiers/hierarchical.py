@@ -17,10 +17,12 @@ import sklearn.linear_model as sklm
 import sklearn.ensemble as skle
 import sklearn.neighbors as skln
 import sklearn.dummy as sky
+import sklearn.calibration as skc
 
 from ..utilities import imagehelpers as ih
 from ..utilities import httphelpers as hh
 from ..utilities import filehelpers as fh
+from ..utilities import classificationhelpers as ch
 from . import embedders as emb
 
 
@@ -37,11 +39,44 @@ class HierarchyElement(object):
         self.tune_params = {}
         self.estimator = None
         self.children = []
+        self.data = {}
 
-        self.X = None
-        self.y = None
+    @property
+    def X(self):
+        return self.data['training']['X']
 
-    def save_configuration(self):
+    @X.setter
+    def X(self, value):
+        self.data['training']['X'] = value
+
+    @property
+    def y(self):
+        return self.data['training']['y']
+
+    @y.setter
+    def y(self, value):
+        self.data['training']['y'] = value
+
+    def prepare_data_subset(self, subset):
+        if subset not in self.data:
+            self.data[subset] = {
+                'X': None,
+                'y': None
+            }
+
+    def subset_has_data(self, subset):
+        if subset not in self.data:
+            return False
+
+        if 'X' not in self.data[subset] or self.data[subset]['X'] is None:
+            return False
+        
+        if 'y' not in self.data[subset] or self.data[subset]['y'] is None:
+            return False
+
+        return True
+
+    def save_configuration(self, include_data=False):
         configuration = {
             'path': self.path,
             'depth': self.depth,
@@ -54,9 +89,13 @@ class HierarchyElement(object):
             'children': []
         }
 
+        if include_data:
+            configuration['data'] = self.data
+
         for child in self.children:
             configuration['children'].append(
-                child.save_configuration())
+                child.save_configuration(
+                    include_data=include_data))
 
         return configuration
 
@@ -71,6 +110,9 @@ class HierarchyElement(object):
         element.output_feature = configuration['output_feature']
         element.tune_params = configuration['tune_params']
         element.estimator = configuration['estimator']
+
+        if 'data' in configuration:
+            element.data = configuration['data']
 
         for child in configuration['children']:
             element.children.append(
@@ -105,7 +147,7 @@ class HierarchyElement(object):
     def score(self, X, y):
         if self.estimator is None:
             return None
-            
+
         return self.estimator.score(X, y)
 
     def predict(self, X):
@@ -116,7 +158,7 @@ class HierarchyElement(object):
 
     def get_accuracy(self):
         accuracy = self._get_accuracy()
-        
+
         if len(self.children) > 0:
             children_weights = 0
             children_accuracy = 0
@@ -142,7 +184,7 @@ class HierarchyElement(object):
         output.append(
             self._get_summary(
                 show_parameters=show_parameters))
-        
+
         for element in self.children:
             element.get_summary(
                 show_parameters=show_parameters,
@@ -169,51 +211,61 @@ class HierarchyElement(object):
 
     @staticmethod
     def get_pca_nb_components(min_features, max_features, max_length):
-        
+
         output = []
         value = min_features
-        
+
         while value < max_features and len(output) < max_length:
             output.append(value)
             value = 2*value
 
         if len(output) < max_length:
             output.append(max_features)
-        
+
         return output
 
     def _tune_classifiers(
-        self, 
-        test_size,
-        classifiers,
-        min_pca,
-        search_n_jobs):
+            self,
+            test_size,
+            classifiers,
+            min_pca,
+            search_n_jobs):
 
         print('Tuning classifiers for output-feature "{0}" for path "{1}".'.format(
             self.output_feature.feature_name,
             self.path))
+
+        if not self.subset_has_data('training'):
+            print('    -> Missing training data...')
+            raise KeyError('Missing training data')
 
         self.tune_params = {}
         self.tune_params['classifiers'] = {}
 
         if len(self.classes) > 1:
 
-            # Create training and testing partition (validation
-            # split is handled by the 'StratifiedKFold' object)
-            X_tr, X_te, y_tr, y_te = skms.train_test_split(
-                self.X, 
-                self.y, 
-                stratify=self.y,
-                shuffle=True,
-                random_state=0,
-                test_size=test_size)
+            if self.subset_has_data('testing'):
+                X_tr = self.X
+                y_tr = self.y
+                X_te = self.data['testing']['X']
+                y_te = self.data['testing']['y']
+            else:
+                # Create training and testing partition (validation
+                # split is handled by the 'StratifiedKFold' object)
+                X_tr, X_te, y_tr, y_te = skms.train_test_split(
+                    self.X,
+                    self.y,
+                    stratify=self.y,
+                    shuffle=True,
+                    random_state=0,
+                    test_size=test_size)
 
-            print('    -> Current (train) size: "{0}"; Number of classes "{1}"; Stratified-Size "{2}".'.format(
+            print('    -> Train size: ({0}); Test size: ({1}) Number of classes ({2}).'.format(
                 X_tr.shape[0],
-                len(self.classes),
-                m.floor(X_tr.shape[0] / min(X_tr.shape[0], 5))))
+                X_te.shape[0],
+                len(self.classes)))
 
-            while X_tr.shape[0] < 2*len(self.classes):
+            while m.floor(X_tr.shape[0] / 5.0) < 2*len(self.classes):
                 print('    -> Adjusting training dataset size. Current size: "{0}"; Number of classes "{1}".'.format(
                     X_tr.shape[0],
                     len(self.classes)))
@@ -221,29 +273,50 @@ class HierarchyElement(object):
                 X_tr = np.append(X_tr, X_tr.copy(), axis=0)
                 y_tr = np.append(y_tr, y_tr.copy(), axis=0)
 
-            while m.floor(X_tr.shape[0] / min(X_tr.shape[0], 5)) < 2*len(self.classes):
-                print('    -> Adjusting training dataset size. Current size: "{0}"; Number of classes "{1}".'.format(
-                    X_tr.shape[0],
-                    len(self.classes)))
+            # if X_tr.shape[0] < 2*len(self.classes):
 
-                X_tr = np.append(X_tr, X_tr.copy(), axis=0)
-                y_tr = np.append(y_tr, y_tr.copy(), axis=0)
+            #     print('    -> The number of training samples ({0}) is smaller than twice the number of classes ({1}).'.format(
+            #         X_tr.shape[0],
+            #         len(self.classes)))
 
-            while X_te.shape[0] < 2*len(self.classes):
-                print('    -> Adjusting testing dataset size. Current size: "{0}"; Number of classes "{1}".'.format(
-                    X_te.shape[0],
-                    len(self.classes)))
+            # if X_tr.shape[0] < 2*len(self.classes):
 
-                X_te = np.append(X_te, X_te.copy(), axis=0)
-                y_te = np.append(y_te, y_te.copy(), axis=0)
+            #     print('    -> The number of training samples ({0}) is too small.'.format(
+            #         X_tr.shape[0],
+            #         len(self.classes)))
+
+
+            # # while X_tr.shape[0] < 2*len(self.classes):
+            # #     print('    -> Adjusting training dataset size. Current size: "{0}"; Number of classes "{1}".'.format(
+            # #         X_tr.shape[0],
+            # #         len(self.classes)))
+
+            # #     X_tr = np.append(X_tr, X_tr.copy(), axis=0)
+            # #     y_tr = np.append(y_tr, y_tr.copy(), axis=0)
+
+            # # while m.floor(X_tr.shape[0] / 5) < 2*len(self.classes):
+            # #     print('    -> Adjusting training dataset size. Current size: "{0}"; Number of classes "{1}".'.format(
+            # #         X_tr.shape[0],
+            # #         len(self.classes)))
+
+            # #     X_tr = np.append(X_tr, X_tr.copy(), axis=0)
+            # #     y_tr = np.append(y_tr, y_tr.copy(), axis=0)
+
+            # # while X_te.shape[0] < 2*len(self.classes):
+            # #     print('    -> Adjusting testing dataset size. Current size: "{0}"; Number of classes "{1}".'.format(
+            # #         X_te.shape[0],
+            # #         len(self.classes)))
+
+            # #     X_te = np.append(X_te, X_te.copy(), axis=0)
+            # #     y_te = np.append(y_te, y_te.copy(), axis=0)
 
             for classifier_name, classifier_value in classifiers.items():
 
-                if X_tr.shape[0] > 10000 and classifier_name == 'KNeighborsClassifier':
-                    print('    -> Skipping KNeighborsClassifier as training set too large ({0} > 10000)'.format(
-                        X_tr.shape[0]))
+                # if X_tr.shape[0] > 10000 and classifier_name == 'KNeighborsClassifier':
+                #     print('    -> Skipping KNeighborsClassifier as training set too large ({0} > 10000)'.format(
+                #         X_tr.shape[0]))
 
-                    continue
+                #     continue
 
                 print('    -> Tuning "{0}"'.format(classifier_name))
 
@@ -254,25 +327,27 @@ class HierarchyElement(object):
                     'results': {},
                     'parameters': {},
                     'best_estimator': None
-                    }
+                }
 
                 # Add standard scaller
                 steps = [
-                    ('std', skp.StandardScaler())]
+                    ('std', skp.StandardScaler())
+                ]
 
                 if min_pca is not None and X_tr.shape[0] > X_tr.shape[1] and X_tr.shape[1] > min_pca:
                     steps.append(
                         ('pca', skd.PCA(
                             random_state=0)))
 
-                    dict_grid['pca__n_components'] = HierarchyElement.get_pca_nb_components(min_pca, X_tr.shape[1], 3)
+                    dict_grid['pca__n_components'] = HierarchyElement.get_pca_nb_components(
+                        min_pca, X_tr.shape[1], 3)
 
                 if classifier_name == 'SGDClassifier':
                     steps.append(
                         (classifier_name, sklm.SGDClassifier(
-                            max_iter=1000, 
                             shuffle=True,
-                            random_state=0, 
+                            random_state=0,
+                            max_iter=1000,
                             penalty='l2',
                             loss='log',
                             class_weight='balanced',
@@ -281,33 +356,36 @@ class HierarchyElement(object):
                 elif classifier_name == 'RandomForestClassifier':
                     steps.append(
                         (classifier_name, skle.RandomForestClassifier(
-                            random_state=0, 
-                            max_depth=None, 
+                            random_state=0,
+                            max_depth=None,
                             class_weight='balanced',
                             n_jobs=2)))
 
-                elif classifier_name == 'KNeighborsClassifier':
-                    steps.append(
-                        (classifier_name, skln.KNeighborsClassifier(
-                            weights='distance',
-                            n_jobs=2)))
+                # elif classifier_name == 'KNeighborsClassifier':
+                #     steps.append(
+                #         (classifier_name, skln.KNeighborsClassifier(
+                #             weights='distance',
+                #             n_jobs=2)))
 
                 # Create a pipeline for the work to be done
                 pipe = skpl.Pipeline(steps)
 
                 for param_name, param_value in classifier_value.items():
                     # Add the search space to the grid
-                    dict_grid['{0}__{1}'.format(classifier_name, param_name)] = param_value
+                    dict_grid['{0}__{1}'.format(
+                        classifier_name, param_name)] = param_value
 
                 # create the k-fold object
                 kfold = skms.StratifiedKFold(
-                    n_splits=min(X_tr.shape[0], 5), 
-                    random_state=0, 
+                    n_splits=5,
+                    random_state=0,
                     shuffle=True)
 
                 search = skms.GridSearchCV(
                     estimator=pipe,
                     param_grid=dict_grid,
+                    scoring='f1_micro',
+                    refit=True,
                     cv=kfold,
                     n_jobs=2)
 
@@ -315,16 +393,19 @@ class HierarchyElement(object):
                 start_time = ti.time()
 
                 search.fit(
-                    X=X_tr, 
+                    X=X_tr,
                     y=y_tr)
 
-                elapsed_time = dt.timedelta(seconds=int(round(ti.time() - start_time)))
+                elapsed_time = dt.timedelta(
+                    seconds=int(round(ti.time() - start_time)))
 
                 # capture elapsed time
-                self.tune_params['classifiers'][classifier_name]['fit_time'] = elapsed_time.total_seconds()
+                self.tune_params['classifiers'][classifier_name]['fit_time'] = elapsed_time.total_seconds(
+                )
 
                 # capture all tuning parameters
-                self.tune_params['classifiers'][classifier_name]['parameters'].update(search.best_params_)
+                self.tune_params['classifiers'][classifier_name]['parameters'].update(
+                    search.best_params_)
 
                 # keep the best estimator
                 self.tune_params['classifiers'][classifier_name]['best_estimator'] = search.best_estimator_
@@ -333,7 +414,7 @@ class HierarchyElement(object):
                 self.tune_params['classifiers'][classifier_name]['results'] = {
                     'validation': search.best_score_,
                     'test': search.score(X_te, y_te)
-                    }
+                }
 
                 print('        -> Best validation score: {0:.4%}'.format(
                     self.tune_params['classifiers'][classifier_name]['results']['validation']))
@@ -341,11 +422,12 @@ class HierarchyElement(object):
                 print('        -> Test score: {0:.4%}'.format(
                     self.tune_params['classifiers'][classifier_name]['results']['test']))
 
-                print('        -> Tuning time: {0} ({1}s)'.format(elapsed_time, elapsed_time.total_seconds()))
+                print(
+                    '        -> Tuning time: {0} ({1}s)'.format(elapsed_time, elapsed_time.total_seconds()))
 
-                if self.tune_params['classifiers'][classifier_name]['results']['test'] > 0.99:
-                    print('        -> Skipping other classifiers as test score > 99%')
-                    break
+                # if self.tune_params['classifiers'][classifier_name]['results']['test'] > 0.99:
+                #     print('        -> Skipping other classifiers as test score > 99%')
+                #     break
 
         else:
             classifier_name = 'DummyRegressor'
@@ -355,16 +437,20 @@ class HierarchyElement(object):
             self.tune_params['classifiers'][classifier_name] = {}
 
             estimator = skpl.Pipeline(
-                steps=[ (classifier_name, sky.DummyRegressor(strategy='constant', constant=0)) ])
+                steps=[
+                    (classifier_name, sky.DummyRegressor(
+                        strategy='constant', 
+                        constant=0))
+                ])
 
             estimator.fit(
-                X=self.X, 
+                X=self.X,
                 y=self.y)
-            
+
             self.tune_params['classifiers'][classifier_name]['results'] = {
-                'validation': None,
+                'validation': 1.0,
                 'test': 1.0
-                }
+            }
 
             self.tune_params['classifiers'][classifier_name]['fit_time'] = 0
             self.tune_params['classifiers'][classifier_name]['parameters'] = {}
@@ -372,12 +458,42 @@ class HierarchyElement(object):
 
         # find the model with the best results.
         all_classifiers = list(self.tune_params['classifiers'].keys())
-        all_results = [self.tune_params['classifiers'][classifier]['results']['test'] for classifier in all_classifiers]
+        all_results = [self.tune_params['classifiers'][classifier]
+                       ['results']['test'] for classifier in all_classifiers]
 
         best_estimator_index = np.argmax(all_results)
         best_estimator_name = all_classifiers[best_estimator_index]
 
-        self.estimator = self.tune_params['classifiers'][best_estimator_name]['best_estimator']
+        best_estimator = self.tune_params['classifiers'][best_estimator_name]['best_estimator']
+
+        # We need to check whether the best estimator implements the 'predict_proba' method.
+        # If it does, we can 1) calibrate the estimator and 2) compute the optimized thresholds. 
+        has_predict_proba = callable(getattr(best_estimator, 'predict_proba', None))
+
+        if has_predict_proba:
+
+            # Create a calibrated estimator
+            calibrated_estimator = skc.CalibratedClassifierCV(
+                base_estimator=best_estimator,
+                cv='prefit')
+
+            # Fit it
+            calibrated_estimator.fit(
+                X=self.X,
+                y=self.y)
+
+            self.estimator = calibrated_estimator
+
+            # Prepare optimized thresholds
+            y_te_score = self.estimator.predict_proba(X_te)
+            y_te_true = ch.y_to_y_true(y_te)
+
+            self.tune_params['best_thresholds'] = ch.get_optimized_thresholds(
+                y_true=y_te_true,
+                y_score=y_te_score,
+                score=ch.score_f1_invert)
+        else:
+            self.estimator = self.tune_params['classifiers'][best_estimator_name]['best_estimator']
 
         self.tune_params['best_score'] = self.tune_params['classifiers'][best_estimator_name]['results']['test']
         self.tune_params['best_classifier'] = best_estimator_name
@@ -386,12 +502,24 @@ class HierarchyElement(object):
             best_estimator_name,
             self.tune_params['best_score']))
 
+    def plot_curves(self, X, y, class_name=None):
+        # Prepare optimized thresholds
+        y_score = self.estimator.predict_proba(X)
+        y_true = ch.y_to_y_true(y)
+
+        for i, c_name in enumerate(self.classes):
+            if class_name is None or class_name == c_name:
+                ch.plot_curves(
+                    title=c_name.upper(),
+                    best_threshold=self.tune_params['best_thresholds'][i], 
+                    y_true=y_true[:, i], 
+                    y_score=y_score[:, i])
+
     def save_data(self, filename):
         fh.save_to_npz(
             filename,
             {
-                'X': self.X,
-                'y': self.y,
+                'data': self.data,
                 'classes': self.classes
             })
 
@@ -401,63 +529,75 @@ class HierarchyElement(object):
         fh.save_to_npz(
             filename,
             {
-                'X': self.X
+                'data': self.data
             })
 
         return filename
 
     def load_data(self, filename):
         d = fh.load_from_npz(
-                filename)
+            filename)
 
-        self.X = d['X']
-        self.y = d['y']
+        self.data = d['data']
         self.classes = d['classes']
 
     def set_min_samples_per_class(self, min_samples_per_class=2):
 
-        _X = []
-        _y = []
+        for subset in self.data:
 
-        indices = np.arange(len(self.y))
+            if self.subset_has_data(subset):
 
-        classes_values, samples_count = np.unique(self.y, return_counts=True)
+                _X = []
+                _y = []
 
-        for classes_value in classes_values:
-            if samples_count[classes_value] < min_samples_per_class:
-                missing = min_samples_per_class - samples_count[classes_value]
-                cycle = it.cycle(indices[(self.y == classes_value)])
+                indices = np.arange(len(self.data[subset]['y']))
 
-                for _ in np.arange(missing):
-                    new_idx = next(cycle)
+                for i, _ in enumerate(self.classes):
 
-                    _X.append(self.X[new_idx])
-                    _y.append(self.y[new_idx])
+                    c_indices = indices[(self.data[subset]['y'] == i)]
 
-        if len(_X) > 0:
-            self.X = np.append(
-                self.X,
-                _X,
-                axis=0)
+                    if len(c_indices) > 0:
+                        samples_count = c_indices.shape[0]
 
-            self.y = np.append(
-                self.y,
-                _y,
-                axis=0)
+                        if samples_count < min_samples_per_class:
+                            missing = min_samples_per_class - samples_count
+                            cycle = it.cycle(c_indices)
 
-    def get_dataset_balance_status(self):
+                            for _ in np.arange(missing):
+                                new_idx = next(cycle)
 
-        a, c = np.unique(
-            self.y, 
-            return_counts=True)
+                                _X.append(self.data[subset]['X'][new_idx])
+                                _y.append(self.data[subset]['y'][new_idx])
 
-        df = pd.DataFrame.from_dict({
-            'label_idx': a,
-            'label_names': self.classes,
-            'label_count': c
-        })
+                if len(_X) > 0:
+                    self.data[subset]['X'] = np.append(
+                        self.data[subset]['X'],
+                        _X,
+                        axis=0)
 
-        df.set_index('label_idx', inplace=True)
+                    self.data[subset]['y'] = np.append(
+                        self.data[subset]['y'],
+                        _y,
+                        axis=0)
+
+    def get_dataset_balance_status(self, subset='training'):
+
+        df = None
+
+        if self.subset_has_data(subset):
+
+            a, c = np.unique(
+                self.data[subset]['y'],
+                return_counts=True)
+
+            df = pd.DataFrame.from_dict({
+                'label_idx': a,
+                'label_names': self.classes,
+                'label_count': c
+            })
+
+            df.set_index('label_idx', inplace=True)
+
         return df
 
 
@@ -474,13 +614,14 @@ class HierarchicalClassifierModel(object):
 
         self.register_default_embedders()
 
-    def save_configuration(self):
+    def save_configuration(self, include_data=False):
         configuration = {
             'model_name': self.model_name,
             'input_features': self.input_features,
             'output_feature_hierarchy': self.output_feature_hierarchy,
             'max_nb_categories': self.max_nb_categories,
-            'hierarchy': self.hierarchy.save_configuration(),
+            'hierarchy': self.hierarchy.save_configuration(
+                include_data=include_data),
             'experiment_name': self.experiment_name
         }
 
@@ -489,13 +630,14 @@ class HierarchicalClassifierModel(object):
     @staticmethod
     def load_configuration(configuration):
         model = HierarchicalClassifierModel(
-            model_name=configuration['model_name'], 
-            input_features=configuration['input_features'], 
-            output_feature_hierarchy=configuration['output_feature_hierarchy'], 
-            experiment_name=configuration['experiment_name'], 
+            model_name=configuration['model_name'],
+            input_features=configuration['input_features'],
+            output_feature_hierarchy=configuration['output_feature_hierarchy'],
+            experiment_name=configuration['experiment_name'],
             max_nb_categories=configuration['max_nb_categories'])
 
-        model.hierarchy = HierarchyElement.load_configuration(configuration['hierarchy'])
+        model.hierarchy = HierarchyElement.load_configuration(
+            configuration['hierarchy'])
 
         return model
 
@@ -506,11 +648,13 @@ class HierarchicalClassifierModel(object):
         self.register_embedder(emb.CategoryEmbedder())
         self.register_embedder(emb.TextEmbedder())
         self.register_embedder(emb.NumericEmbedder())
+        self.register_embedder(emb.LongTextEmbedder())
 
-    def save_model(self, filepath):
+    def save_model(self, filepath, include_data=False):
         model_filepath = fh.save_to_pickle(
             filepath=filepath,
-            data=self.save_configuration())
+            data=self.save_configuration(
+                include_data=include_data))
 
         print('Model saved in "{0}"'.format(model_filepath))
 
@@ -525,11 +669,11 @@ class HierarchicalClassifierModel(object):
             return None
 
         return self.hierarchy.get_accuracy()
-    
+
     def get_dataset_balance_status(self):
         if self.hierarchy is None:
             return None
-        
+
         return self.hierarchy.get_dataset_balance_status()
 
     def get_summary(self, show_parameters=False):
@@ -543,31 +687,31 @@ class HierarchicalClassifierModel(object):
                     ascending=[True, True])
 
     def tune_classifiers(
-        self, 
-        test_size=.2, 
+        self,
+        test_size=.2,
         min_pca=256,
         search_n_jobs=2,
         classifiers={
             'SGDClassifier': {
                 'alpha': np.logspace(
-                    start=-8, 
-                    stop=-1, 
+                    start=-8,
+                    stop=-1,
                     num=8)
-            }, 
+            },
             'RandomForestClassifier': {
                 'n_estimators': np.linspace(
                     start=64,
                     stop=256,
-                    num=4, 
+                    num=4,
                     dtype=np.int32)
-            }, 
+            },
             'KNeighborsClassifier': {
                 'n_neighbors': [4, 6, 8, 10]
             }}):
 
         if self.hierarchy is None:
             return None
-        
+
         self.hierarchy.tune_classifiers(
             test_size=test_size,
             classifiers=classifiers,
@@ -597,28 +741,143 @@ class HierarchicalClassifierModel(object):
     def analyze_dataframe(data):
         return data.describe(include=['object']).transpose()
 
-    def load_from_dataframe(self, data, cache={}):
-        for input_feature in self.input_features:
-            if input_feature.feature_type == 'category':
-                input_feature.classes = data[input_feature.feature_name].unique().tolist()
+    def process_data(self, data):
 
-                if len(input_feature.classes) > self.max_nb_categories:
-                    raise OverflowError(
-                        'Too many values ({0}) for category "{1}". Maximum number of categories allowed is {2}. Switch type to "text" instead.'.format(
-                            len(input_feature.classes),
-                            input_feature.feature_name,
-                            self.max_nb_categories))
+        X = []
+        y = []
+        index = 0
 
-        self.hierarchy = self._load_from_dataframe(
-            data=data,
-            cache=cache,
-            parent_output_feature=None,
-            output_feature=self.output_feature_hierarchy,
-            filter_value=None,
-            depth=0,
-            path='.')
+        y_cols = []
+        output_feature = self.output_feature_hierarchy
+
+        while output_feature is not None:
+            y_cols.append(output_feature.feature_name)
+            output_feature = output_feature.child_feature
+
+        # load the data
+        for r in data.itertuples(index=True):
+
+            r_dict = r._asdict()
+
+            X.append(
+                self._get_vector(r_dict))
+
+            _y = []
+
+            for y_col in y_cols:
+                _y.append(
+                   r_dict[y_col])
+
+            y.append(
+                np.array(_y))
+
+            index = index + 1
+
+            if index % 10000 == 0:
+                print(' -> Processed {0} inputs so far.'.format(index))
+
+        return np.array(X, dtype=float), np.array(y, dtype=str)
+
+    def load_from_dataframe(self, data, subset='training', cache={}):
+
+        if self.hierarchy is None or subset == 'training':
+
+            for input_feature in self.input_features:
+                if input_feature.feature_type == 'category':
+                    input_feature.classes = data[input_feature.feature_name].unique().tolist()
+
+                    if len(input_feature.classes) > self.max_nb_categories:
+                        raise OverflowError(
+                            'Too many values ({0}) for category "{1}". Maximum number of categories allowed is {2}. Switch type to "text" instead.'.format(
+                                len(input_feature.classes),
+                                input_feature.feature_name,
+                                self.max_nb_categories))
+
+            self.hierarchy = self._load_from_dataframe(
+                data=data,
+                cache=cache,
+                parent_output_feature=None,
+                output_feature=self.output_feature_hierarchy,
+                filter_value=None,
+                depth=0,
+                path='.')
+
+        else:
+            # Load additional data
+            self._dataload_from_dataframe(
+                element=self.hierarchy,
+                data=data,
+                cache=cache,
+                subset=subset)
+
+    def _dataload_from_dataframe(self, element, data, cache, subset='training'):
+
+        print('Processing output-feature "{0}" for path "{1}" for subset "{2}".'.format(
+            element.output_feature.feature_name,
+            element.path,
+            subset))
+
+        element.prepare_data_subset(
+            subset=subset)
         
+        _data = None
+
+        if element.parent_output_feature is None:
+            _data = data
+        else:
+            _data = data[
+                (data[element.parent_output_feature.feature_name] == element.filter_value)
+            ]
+
+        x = []
+        y = []
+        index = 0
+
+        # load the data
+        for r in _data.itertuples(index=True):
+
+            r_dict = r._asdict()
+
+            if not self.valid_input(r_dict):
+                raise OverflowError(
+                    'Invalid input (missing one or more features): "{0}".'.format(r_dict))
+
+            if r_dict[element.output_feature.feature_name] in element.classes:
+                x.append(
+                    self._get_vector(r_dict, r_dict['Index'], cache))
+
+                y.append(
+                    element.classes.index(r_dict[element.output_feature.feature_name]))
+            else:
+                print('  -> Unknown class: {0}'.format(r_dict[element.output_feature.feature_name]))
+
+            index = index + 1
+
+            if index % 10000 == 0:
+                print(' -> Processed {0} inputs so far.'.format(index))
+
+        if len(x) > 0 and len(y) > 0:
+
+            element.data[subset]['X'] = np.array(x, dtype=np.float64)
+            element.data[subset]['y'] = np.array(y, dtype=np.int32)
+
+            element.set_min_samples_per_class(
+                min_samples_per_class=25)
+
+            print(' -> There are {0} classes and {1} samples.'.format(
+                len(element.classes),
+                element.data[subset]['y'].shape[0]))
+
+        for child_element in element.children:
+
+            self._dataload_from_dataframe(
+                element=child_element,
+                data=_data,
+                cache=cache,
+                subset=subset)
+
     def _load_from_dataframe(self, data, cache, parent_output_feature, output_feature, filter_value, depth, path):
+
         element = HierarchyElement()
         element.parent_output_feature = parent_output_feature
         element.output_feature = output_feature
@@ -633,14 +892,19 @@ class HierarchicalClassifierModel(object):
         if element.output_feature is None:
             return None
 
+        element.prepare_data_subset(
+            subset='training')
+        
         _data = None
 
         if element.parent_output_feature is None:
             _data = data
         else:
-            _data = data[(data[element.parent_output_feature.feature_name] == element.filter_value)]
+            _data = data[(
+                data[element.parent_output_feature.feature_name] == element.filter_value)]
 
-        element.classes = _data[element.output_feature.feature_name].unique().tolist()
+        element.classes = _data[element.output_feature.feature_name].unique(
+        ).tolist()
 
         print(' -> There are {0} classes and {1} samples.'.format(
             len(element.classes),
@@ -652,9 +916,9 @@ class HierarchicalClassifierModel(object):
 
         # load the data
         for r in _data.itertuples(index=True):
-            
+
             r_dict = r._asdict()
-            
+
             if not self.valid_input(r_dict):
                 raise OverflowError(
                     'Invalid input (missing one or more features): "{0}".'.format(r_dict))
@@ -666,7 +930,7 @@ class HierarchicalClassifierModel(object):
                 element.classes.index(r_dict[element.output_feature.feature_name]))
 
             index = index + 1
-        
+
             if index % 10000 == 0:
                 print(' -> Processed {0} inputs so far.'.format(index))
 
@@ -675,7 +939,7 @@ class HierarchicalClassifierModel(object):
             element.y = np.array(y, dtype=np.int32)
 
             element.set_min_samples_per_class(
-                min_samples_per_class=10)
+                min_samples_per_class=25)
 
             print(' -> There are {0} classes and {1} samples.'.format(
                 len(element.classes),
@@ -691,7 +955,7 @@ class HierarchicalClassifierModel(object):
                     filter_value=class_value,
                     depth=depth+1,
                     path='{0} / {1}'.format(element.path, class_value))
-                
+
                 if child_element is not None:
                     element.children.append(child_element)
 
@@ -717,7 +981,7 @@ class HierarchicalClassifierModel(object):
                 output=output,
                 append_proba=append_proba,
                 last_level_only=last_level_only)
-        
+
         return output
 
     def _predict(self, X, hierarchy_element=None, output=None, append_proba=False, last_level_only=False):
@@ -733,18 +997,20 @@ class HierarchicalClassifierModel(object):
                 y_name = hierarchy_element.get_class_name(y)
 
                 result = {
-                    'output_feature': hierarchy_element.output_feature.feature_name, 
+                    'output_feature': hierarchy_element.output_feature.feature_name,
                     'predicted_class': y_name,
                     'predicted_class_index': int(y)
                 }
 
                 if append_proba:
-                    proba_values = hierarchy_element.estimator.predict_proba([X])[0]
+                    proba_values = hierarchy_element.estimator.predict_proba([X])[
+                        0]
 
                     proba_results = {}
 
                     for idx, proba_value in enumerate(proba_values):
-                        proba_results[hierarchy_element.get_class_name(idx)] = float(proba_value)
+                        proba_results[hierarchy_element.get_class_name(
+                            idx)] = float(proba_value)
 
                     result['predicted_proba'] = proba_results
 
@@ -753,14 +1019,15 @@ class HierarchicalClassifierModel(object):
             if len(hierarchy_element.children) > 0:
                 self._predict(
                     X=X,
-                    hierarchy_element=hierarchy_element.get_child_by_filter_value(y_name),
+                    hierarchy_element=hierarchy_element.get_child_by_filter_value(
+                        y_name),
                     output=output,
                     append_proba=append_proba)
 
     def _get_vector(self, input, index=None, cache=None):
-        
+
         _x = HierarchicalClassifierModel.try_and_get_from_cache(index, cache)
-        
+
         if _x is None:
             for input_feature in self.input_features:
                 _vect = self.embedders[input_feature.feature_type].embed_data(
@@ -772,7 +1039,7 @@ class HierarchicalClassifierModel(object):
                     _x = _vect.copy()
                 else:
                     _x = np.append(_x, _vect)
-            
+
             if index is not None and cache is not None:
                 cache[index] = _x
 

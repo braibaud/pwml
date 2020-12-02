@@ -4,3 +4,4 @@ from . import filehelpers
 from . import httphelpers
 from . import imagehelpers
 from . import mssqlhelpers
+from . import classificationhelpers
