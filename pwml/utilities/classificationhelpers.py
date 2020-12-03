@@ -51,7 +51,7 @@ def initialize_styles():
 
         GraphicsStatics.g_styles_initialized = True
 
-def plot_curves(title, best_threshold, y_true, y_score):
+def plot_curves(title, best_threshold, y_true, y_score, n_bins=10):
 
     # syle
     initialize_styles()
@@ -277,8 +277,6 @@ def plot_curves(title, best_threshold, y_true, y_score):
         'Threshold Maximizing F1-Score = {0:.4f}'.format(x_opt), 
         fontweight='bold')
 
-    n_bins = 25
-    
     fraction_of_positives, mean_predicted_value = skc.calibration_curve(
         y_true=y_true,
         y_prob=y_score,
@@ -466,28 +464,28 @@ def get_metrics_by_class(y_true, y_score, y_pred, classes):
     
     return df_scores.transpose()
 
-def confusion_matrix_values(threshold, y_true, y_score):
-    # Returns TN, FP, FN, TP
-    return skm.confusion_matrix(
-        y_true=y_true, 
-        y_pred=np.array(
-            (np.array(y_score) > threshold),
-            dtype=float),
-        labels=[0.0, 1.0]).ravel()
+# def confusion_matrix_values(threshold, y_true, y_score):
+#     # Returns TN, FP, FN, TP
+#     return skm.confusion_matrix(
+#         y_true=y_true, 
+#         y_pred=np.array(
+#             (np.array(y_score) > threshold),
+#             dtype=float),
+#         labels=[0.0, 1.0]).ravel()
 
-def confusion_matrix_string(threshold, y_true, y_score):
-    # Return the confusion matrix as a string
-    tn, fp, fn, tp = confusion_matrix_values(
-        threshold=threshold,
-        y_true=y_true,
-        y_score=y_score)
+# def confusion_matrix_string(threshold, y_true, y_score):
+#     # Return the confusion matrix as a string
+#     tn, fp, fn, tp = confusion_matrix_values(
+#         threshold=threshold,
+#         y_true=y_true,
+#         y_score=y_score)
     
-    return 'Threshold: {0:.4f}\n\nTN: {1}, FP: {2}\nFN: {3}, TP: {4}'.format(
-        threshold,
-        tn, 
-        fp,
-        fn,
-        tp)
+#     return 'Threshold: {0:.4f}\n\nTN: {1}, FP: {2}\nFN: {3}, TP: {4}'.format(
+#         threshold,
+#         tn, 
+#         fp,
+#         fn,
+#         tp)
 
 def metrics_string(threshold, y_true, y_score):
     
@@ -528,133 +526,412 @@ def metrics_string(threshold, y_true, y_score):
         
     return message[:-1]
 
-def calculate_tpr_fpr_prec(threshold, y_true, y_score):
+# def calculate_tpr_fpr_prec(threshold, y_true, y_score):
     
-    true_neg, false_pos, false_neg, true_pos = confusion_matrix_values(
-        threshold=threshold,
-        y_true=y_true,
-        y_score=y_score)
+#     true_neg, false_pos, false_neg, true_pos = confusion_matrix_values(
+#         threshold=threshold,
+#         y_true=y_true,
+#         y_score=y_score)
     
-    tpr_recall = float(true_pos) / (true_pos + false_neg)
-    fpr = float(false_pos) / (false_pos + true_neg)
-    precision = float(true_pos) / (true_pos + false_pos)
+#     tpr_recall = float(true_pos) / (true_pos + false_neg)
+#     fpr = float(false_pos) / (false_pos + true_neg)
+#     precision = float(true_pos) / (true_pos + false_pos)
     
-    return tpr_recall, fpr, precision
+#     return tpr_recall, fpr, precision
 
-def score_f1(threshold, y_true, y_score):
-    _, fp, fn, tp = confusion_matrix_values(
-        threshold=threshold,
-        y_true=y_true, 
-        y_score=y_score)
+# def score_f1(threshold, y_true, y_score):
+#     _, fp, fn, tp = confusion_matrix_values(
+#         threshold=threshold,
+#         y_true=y_true, 
+#         y_score=y_score)
 
-    den = float(tp) + .5*(float(fp + fn))
+#     den = float(tp) + .5*(float(fp + fn))
 
-    if den == 0.0:
-        if float(tp) > 0.0:
-            return 1.0
-        else :
-            return 0.0
-    else:
-        return (float(tp) / den)
+#     if den == 0.0:
+#         if float(tp) > 0.0:
+#             return 1.0
+#         else :
+#             return 0.0
+#     else:
+#         return (float(tp) / den)
 
-def score_f1_invert(threshold, y_true, y_score):
-    return 1 - score_f1(threshold, y_true, y_score)
+# def score_f1_invert(threshold, y_true, y_score):
+#     return 1 - score_f1(threshold, y_true, y_score)
 
-def get_optimized_thresholds(y_true, y_score, score):
-    # Get the threshold value minimizing the score function for each class
-    thresholds = []
+# def get_optimized_thresholds(y_true, y_score, score):
+#     # Get the threshold value minimizing the score function for each class
+#     thresholds = []
     
-    for i in range(y_true.shape[1]):
+#     for i in range(y_true.shape[1]):
         
-        y_t = y_true[:, i] 
-        y_s = y_score[:, i]
+#         y_t = y_true[:, i] 
+#         y_s = y_score[:, i]
 
-        result = sco.minimize_scalar(
-            fun=score, 
-            bounds=(0, 1), 
-            args=(y_t, y_s),
-            method='bounded',
-            options={
-                'xatol': 1e-5, 
-                'maxiter': 250 })
+#         result = sco.minimize_scalar(
+#             fun=score, 
+#             bounds=(0, 1), 
+#             args=(y_t, y_s),
+#             method='bounded',
+#             options={
+#                 'xatol': 1e-5, 
+#                 'maxiter': 250 })
 
-        thresholds.append(
-            result.x)
+#         thresholds.append(
+#             result.x)
             
-    return np.array(thresholds)
+#     return np.array(thresholds)
 
-def predict_multiclass(model, thresholds, X):
-    """Predict class labels for samples in X, by using the
-    `predict_proba` model function and the optimized `thresholds`
-    values (class specific)
+# def predict_multiclass(model, thresholds, X):
+#     """Predict class labels for samples in X, by using the
+#     `predict_proba` model function and the optimized `thresholds`
+#     values (class specific)
 
-    Args:
-        model (estimator): scikit-learn style estimator implementing `predict_proba`.
-        thresholds (ndarray, shape (nb_classes, )): list of optimized threshold values.
-        X (ndarray, shape (n_samples, n_features)): Input data for prediction.
+#     Args:
+#         model (estimator): scikit-learn style estimator implementing `predict_proba`.
+#         thresholds (ndarray, shape (nb_classes, )): list of optimized threshold values.
+#         X (ndarray, shape (n_samples, n_features)): Input data for prediction.
 
-    Returns:
-        [ndarray, shape [n_samples]]: Predicted class label per sample.
-    """
-    return predict_using_optimized_thresholds(
-        thresholds=thresholds,
-        y_score=model.predict_proba(X))
+#     Returns:
+#         ndarray, shape (n_samples, nb_classes): Predicted class label per sample (1-hot encoded).
+#     """
+#     return predict_using_optimized_thresholds(
+#         thresholds=thresholds,
+#         y_score=model.predict_proba(X))
 
-def predict_using_optimized_thresholds(thresholds, y_score):
-    """[summary]
+# def predict_using_optimized_thresholds(thresholds, y_score):
+#     """[summary]
 
-    Args:
-        thresholds ([type]): [description]
-        y_score ([type]): [description]
+#     Args:
+#         thresholds ([type]): [description]
+#         y_score ([type]): [description]
 
-    Returns:
-        [type]: [description]
-    """
-    # Find the winners (scores higher than class-threshold).
-    y_pred = np.array(
-        (np.array(y_score) > thresholds),
-        dtype=float)
+#     Returns:
+#         [type]: [description]
+#     """
+#     # Find the winners (scores higher than class-threshold).
+#     y_pred = np.array(
+#         (np.array(y_score) > thresholds),
+#         dtype=float)
 
-    # Number of winners for each sample
-    y_n_winners = y_pred.sum(
-        axis=1,
-        dtype=float)
+#     # Number of winners for each sample
+#     y_n_winners = y_pred.sum(
+#         axis=1,
+#         dtype=float)
     
-    # Ratio of the scores compared to each class-threshold (how far are we from the threshold)
-    y_t_ratio = np.array(
-        y_score / thresholds,
-        dtype=float)
+#     # Ratio of the scores compared to each class-threshold (how far are we from the threshold)
+#     y_t_ratio = np.array(
+#         y_score / thresholds,
+#         dtype=float)
     
-    # Samples with no clear winner: proba ratio considering all classes (none beyond threshold)
-    y_0w_vect = (1 - y_pred) * y_score * y_t_ratio
+#     # Samples with no clear winner: proba ratio considering all classes (none beyond threshold)
+#     y_0w_vect = (1 - y_pred) * y_score * y_t_ratio
 
-    # Samples with no clear winner: the class with the highest % wins
-    y_0w_winner = np.array(
-        (y_0w_vect == y_0w_vect.max(axis=1).reshape(-1, 1)),
-        dtype=float)
+#     # Samples with no clear winner: the class with the highest % wins
+#     y_0w_winner = np.array(
+#         (y_0w_vect == y_0w_vect.max(axis=1).reshape(-1, 1)),
+#         dtype=float)
     
-    #Samples with multiple winners: proba ratio considering winning classes only (above threshold)
-    y_nw_vect = y_pred * y_score * y_t_ratio
+#     #Samples with multiple winners: proba ratio considering winning classes only (above threshold)
+#     y_nw_vect = y_pred * y_score * y_t_ratio
     
-    # Samples with multiple winners: the class with the highest % wins
-    y_nw_winner = np.array(
-        (y_nw_vect == y_nw_vect.max(axis=1).reshape(-1, 1)),
-        dtype=float)
+#     # Samples with multiple winners: the class with the highest % wins
+#     y_nw_winner = np.array(
+#         (y_nw_vect == y_nw_vect.max(axis=1).reshape(-1, 1)),
+#         dtype=float)
     
-    return np.where(
-        (y_n_winners.reshape(-1, 1) == 1),
-        y_pred, # The easy ones having 1 true winner
-        np.where(
-            (y_n_winners.reshape(-1, 1) == 0),
-            y_0w_winner, # There is no winner
-            y_nw_winner)) # There are multiple winners
+#     return np.where(
+#         (y_n_winners.reshape(-1, 1) == 1),
+#         y_pred, # The easy ones having 1 true winner
+#         np.where(
+#             (y_n_winners.reshape(-1, 1) == 0),
+#             y_0w_winner, # There is no winner
+#             y_nw_winner)) # There are multiple winners
 
-def y_to_y_true(y):
-    y_true = np.zeros(
-        shape=(y.shape[0], y.max() + 1),
-        dtype=float)
+# def convert_score_to_prediction_for_one_class(thresholds, y_score, class_index, class_threshold):
+#     updated_thresholds = thresholds.copy()
+#     updated_thresholds[class_index] = class_threshold
 
-    for i in range(y.shape[0]):
-        y_true[i, y[i]] = 1.0
+#     y_pred = predict_using_optimized_thresholds(
+#         thresholds=updated_thresholds,
+#         y_score=y_score)
 
-    return y_true
+#     return y_pred[:, class_index]
+
+# def confusion_matrix_for_one_class(thresholds, y_true, y_score, class_index, class_threshold):
+#     # Returns TN, FP, FN, TP
+#     return skm.confusion_matrix(
+#         y_true=y_true, 
+#         y_pred=convert_score_to_prediction_for_one_class(
+#             thresholds=thresholds, 
+#             y_score=y_score, 
+#             class_index=class_index, 
+#             class_threshold=class_threshold),
+#         labels=[0.0, 1.0]).ravel()
+
+# # def y_to_y_true(y):
+# #     y_true = np.zeros(
+# #         shape=(y.shape[0], y.max() + 1),
+# #         dtype=float)
+
+# #     for i in range(y.shape[0]):
+# #         y_true[i, y[i]] = 1.0
+
+# #     return y_true
+
+
+class MulticlassClassifierOptimizer(object):
+
+    def __init__(self, model, scoring_function):
+
+        if not callable(getattr(model, 'predict_proba', None)):
+            raise NotImplementedError('the model does not implement method "predict_proba"')
+
+        self.model = model
+        self.scoring_function = scoring_function
+        self.calibrated_model = None
+        self.optimized = False
+        self.thresholds = None
+        self.X = None
+        self.y = None
+        self.y_score = None
+        self.y_true = None
+        self.y_pred_optimized = None
+
+    def optimize_model(self, X, y):
+
+        self.X = X
+        self.y = y
+
+        # Create a model calibration
+        self.calibrated_model = skc.CalibratedClassifierCV(
+            base_estimator=self.model,
+            cv='prefit')
+
+        # Fit it
+        self.calibrated_model.fit(
+            X=self.X,
+            y=self.y)
+
+        # Prepare optimized thresholds
+        self.y_score = self.calibrated_model.predict_proba(
+            X=self.X)
+
+        self.y_true = MulticlassClassifierOptimizer.one_hot_encode(
+            y=self.y)
+
+        self.thresholds = MulticlassClassifierOptimizer.get_optimized_thresholds(
+            scoring_function=self.scoring_function,
+            y_true=self.y_true,
+            y_score=self.y_score)
+
+        self.y_pred_optimized = self.predict_from_score(
+            thresholds=self.thresholds,
+            y_score=self.y_score)
+
+        self.optimized = True
+
+    def predict(self, X):
+        """Predict class labels for samples in X, by using the
+        `predict_proba` model function and the optimized `thresholds`
+        values (class specific)
+
+        Args:
+            X (ndarray, shape (n_samples, n_features)): Input data for prediction.
+
+        Returns:
+            ndarray, shape (n_samples, n_classes): Predicted class label per sample (1-hot encoded).
+        """
+        return self.predict_from_score(
+            thresholds=self.thresholds,
+            y_score=self.calibrated_model.predict_proba(X))
+
+    def predict_from_score_1c(self, y_score, class_index, class_threshold):
+        updated_thresholds = self.thresholds.copy()
+        updated_thresholds[class_index] = class_threshold
+
+        y_pred = MulticlassClassifierOptimizer.predict_from_score(
+            thresholds=updated_thresholds,
+            y_score=y_score)
+
+        return y_pred[:, class_index]
+
+    def confusion_matrix_1c(self, y_true, y_score, class_index, class_threshold):
+        return skm.confusion_matrix(
+            y_true=y_true, 
+            y_pred=self.predict_from_score_1c(
+                y_score=y_score, 
+                class_index=class_index, 
+                class_threshold=class_threshold),
+            labels=[0.0, 1.0]).ravel()
+
+    @staticmethod
+    def predict_from_score(thresholds, y_score):
+        """Predict class labels for scores and the optimized `thresholds`
+        values (class specific)
+
+        Args:
+            y_score (ndarray, shape (n_samples, n_classes)): Input data for prediction.
+
+        Returns:
+            ndarray, shape (n_samples, n_classes): Predicted class label per sample (1-hot encoded).
+        """
+        # Find the winners (scores higher than class-threshold).
+        y_pred = np.array(
+            (np.array(y_score) > thresholds),
+            dtype=float)
+
+        # Number of winners for each sample
+        y_n_winners = y_pred.sum(
+            axis=1,
+            dtype=float)
+        
+        # Ratio of the scores compared to each class-threshold (how far are we from the threshold)
+        y_t_ratio = np.array(
+            y_score / thresholds,
+            dtype=float)
+        
+        # Samples with no clear winner: proba ratio considering all classes (none beyond threshold)
+        y_0w_vect = (1 - y_pred) * y_score * y_t_ratio
+
+        # Samples with no clear winner: the class with the highest % wins
+        y_0w_winner = np.array(
+            (y_0w_vect == y_0w_vect.max(axis=1).reshape(-1, 1)),
+            dtype=float)
+        
+        #Samples with multiple winners: proba ratio considering winning classes only (above threshold)
+        y_nw_vect = y_pred * y_score * y_t_ratio
+        
+        # Samples with multiple winners: the class with the highest % wins
+        y_nw_winner = np.array(
+            (y_nw_vect == y_nw_vect.max(axis=1).reshape(-1, 1)),
+            dtype=float)
+        
+        return np.where(
+            (y_n_winners.reshape(-1, 1) == 1),
+            y_pred, # The easy ones having 1 true winner
+            np.where(
+                (y_n_winners.reshape(-1, 1) == 0),
+                y_0w_winner, # There is no winner
+                y_nw_winner)) # There are multiple winners
+
+    @staticmethod
+    def one_hot_encode(y):
+        y_true = np.zeros(
+            shape=(y.shape[0], y.max() + 1),
+            dtype=float)
+
+        for i in range(y.shape[0]):
+            y_true[i, y[i]] = 1.0
+
+        return y_true
+
+    @staticmethod
+    def get_optimized_thresholds(scoring_function, y_true, y_score):
+        # Get the threshold value minimizing the score function for each class
+        thresholds = []
+        
+        for i in range(y_true.shape[1]):
+            
+            result = sco.minimize_scalar(
+                fun=scoring_function, 
+                bounds=(0, 1), 
+                args=(y_true[:, i], y_score[:, i]),
+                method='bounded',
+                options={
+                    'xatol': 1e-5, 
+                    'maxiter': 250 })
+
+            thresholds.append(
+                result.x)
+                
+        return np.array(thresholds)
+
+
+class BinaryClassifierHelper(object):
+
+    @staticmethod
+    def confusion_matrix(threshold, y_true, y_score):
+        return skm.confusion_matrix(
+            y_true=y_true, 
+            y_pred=np.array(
+                (np.array(y_score) > threshold),
+                dtype=float),
+            labels=[0.0, 1.0]).ravel()
+
+    @staticmethod
+    def f1_score(threshold, y_true, y_score):
+        return BinaryClassifierHelper.f1(
+            *BinaryClassifierHelper.confusion_matrix(
+                threshold=threshold,
+                y_true=y_true, 
+                y_score=y_score))
+
+    @staticmethod
+    def f1_score_alt(threshold, y_true, y_score):
+        return 1 - BinaryClassifierHelper.f1_score(
+            threshold=threshold, 
+            y_true=y_true, 
+            y_score=y_score)
+
+    @staticmethod
+    def get_confusion_matrix_string(threshold, y_true, y_score):
+        tn, fp, fn, tp = BinaryClassifierHelper.confusion_matrix(
+            threshold=threshold,
+            y_true=y_true,
+            y_score=y_score)
+        
+        return 'Threshold: {0:.4f}\n\nTN: {1:d}, FP: {2:d}\nFN: {3:d}, TP: {4:d}'.format(
+            threshold,
+            tn, 
+            fp,
+            fn,
+            tp)
+
+    @staticmethod
+    def recall(tn, fp, fn, tp):
+        if tp + fn == 0:
+            return float(1)
+        else:
+            return float(tp) / float(tp + fn)
+
+    @staticmethod
+    def fallout(tn, fp, fn, tp):
+        if tn == 0:
+            if fp > 0:
+                return float(1)
+            else:
+                return float(0)
+        else:
+            return float(fp) / float(fp + tn)
+
+    @staticmethod
+    def precision(tn, fp, fn, tp):
+        if tp == 0:
+            if fp > 0:
+                return float(0)
+            else:
+                return float(1)
+        else:
+            return float(tp) / float(tp + fp)
+
+    @staticmethod
+    def f1(tn, fp, fn, tp):
+        den = float(tp) + .5*(float(fp + fn))
+
+        if den == 0.0:
+            return float(1)
+        else:
+            return float(tp) / den
+
+    @staticmethod
+    def calculate_tpr_fpr_prec(threshold, y_true, y_score):
+        tn, fp, fn, tp = BinaryClassifierHelper.confusion_matrix(
+            threshold=threshold,
+            y_true=y_true,
+            y_score=y_score)
+        
+        recall_ = BinaryClassifierHelper.recall(tn, fp, fn, tp)
+        fallout_ = BinaryClassifierHelper.fallout(tn, fp, fn, tp)
+        precision_ = BinaryClassifierHelper.precision(tn, fp, fn, tp)
+        
+        return recall_, fallout_, precision_
