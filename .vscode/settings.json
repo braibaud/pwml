@@ -1,4 +1,4 @@
 {
-    "python.pythonPath": "C:\\ProgramData\\Anaconda3\\envs\\exts-tf2-gpu\\python.exe",
+    "python.pythonPath": "C:\\ProgramData\\Anaconda3\\envs\\exts-tf2-gpu-2\\python.exe",
     "python.formatting.provider": "autopep8"
 }
