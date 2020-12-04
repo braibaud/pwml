@@ -9,5 +9,6 @@ from .utilities import httphelpers
 from .utilities import imagehelpers
 from .utilities import mssqlhelpers
 from .utilities import classificationhelpers
+from .utilities import commonhelpers
 
 __version__ = '0.9.8'
