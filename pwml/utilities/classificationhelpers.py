@@ -10,16 +10,18 @@ import seaborn as sns
 from scipy import optimize as sco
 
 import sklearn as sk
-import sklearn.preprocessing as skp
-import sklearn.model_selection as skms
-import sklearn.pipeline as skpl
-import sklearn.decomposition as skd
-import sklearn.linear_model as sklm
-import sklearn.ensemble as skle
-import sklearn.neighbors as skln
-import sklearn.dummy as sky
-import sklearn.metrics as skm
-import sklearn.calibration as skc
+from sklearn import exceptions as skx
+from sklearn import preprocessing as skp
+from sklearn import model_selection as skms
+from sklearn import pipeline as skpl
+from sklearn import decomposition as skd
+from sklearn import linear_model as sklm
+from sklearn import ensemble as skle
+from sklearn import neighbors as skln
+from sklearn import dummy as sky
+from sklearn import metrics as skm
+from sklearn import calibration as skc
+from sklearn.utils import validation as skuv
 
 from . import commonhelpers as cmn
 
@@ -51,8 +53,8 @@ class GraphicsStatics(object):
             sns.set_palette(
                 GraphicsStatics.g_palette)
 
-            pyl.rcParams['figure.figsize'] = GraphicsStatics.g_fig_size
-            plt.rcParams['figure.figsize'] = GraphicsStatics.g_fig_size
+            pyl.rcParams['figure.figsize'] = GraphicsStatics.g_landscape_fig_size
+            plt.rcParams['figure.figsize'] = GraphicsStatics.g_landscape_fig_size
             plt.rcParams['axes.labelsize'] = 18
             plt.rcParams['axes.titlesize'] = 18
 
@@ -63,8 +65,8 @@ class MulticlassClassifierOptimizer(object):
 
     def __init__(self, model, classes, scoring_function):
 
-        if not callable(getattr(model, 'predict_proba', None)):
-            raise NotImplementedError('the model does not implement method "predict_proba"')
+        if not MulticlassClassifierOptimizer.optimizable_model(model):
+            raise NotImplementedError('The model does not implement method "predict_proba" and cannot be optimized.')
 
         self.model = model
         self.classes = classes
@@ -79,10 +81,19 @@ class MulticlassClassifierOptimizer(object):
         self.y_true = None
         self.y_pred_optimized = None
 
-    def optimize_model(self, X, y):
+    @property
+    def classes_(self):
+        return range(len(self.classes))
+        
+    def fit(self, X, y):
 
         self.X = X
         self.y = y
+
+        if not MulticlassClassifierOptimizer.fitted_model(self.model):
+            self.model.fit(
+                X=X,
+                y=y)
 
         # Create a model calibration
         self.calibrated_model = skc.CalibratedClassifierCV(
@@ -112,6 +123,22 @@ class MulticlassClassifierOptimizer(object):
 
         self.optimized = True
 
+        return self
+
+    def predict_proba(self, X):
+        """
+        Predict class probabilities for X.
+
+        Args:
+            X (ndarray, shape (n_samples, n_features)): The input samples.
+        
+        Returns:
+            ndarray, shape (n_samples, n_classes): The class probabilities 
+            of the input samples. The order of the classes corresponds to that
+            in the attribute :term:`classes_`.
+        """
+        self.calibrated_model.predict_proba(X)
+
     def predict(self, X):
         """Predict class labels for samples in X, by using the
         `predict_proba` model function and the optimized `thresholds`
@@ -139,15 +166,29 @@ class MulticlassClassifierOptimizer(object):
 
     def confusion_matrix_1c(self, y_true, y_score, class_index, class_threshold):
         return skm.confusion_matrix(
-            y_true=y_true, 
+            y_true=y_true[:, class_index], 
             y_pred=self.predict_from_score_1c(
                 y_score=y_score, 
                 class_index=class_index, 
                 class_threshold=class_threshold),
             labels=[0.0, 1.0]).ravel()
 
-    def get_metrics_by_class(self, y_true, y_score):
+    def get_metrics_by_class(self, X=None, y=None):
+        if X is None or y is None:
+            self.get_metrics_by_class_base(
+                y_true=None,
+                y_score=None)
+        else:
+            self.get_metrics_by_class_base(
+                y_true=MulticlassClassifierOptimizer.one_hot_encode(y),
+                y_score=self.predict_proba(X))
+
+    def get_metrics_by_class_base(self, y_true=None, y_score=None):
         
+        if y_true is None or y_score is None:
+            y_true = self.y_true
+            y_score = self.y_score
+
         records = []
 
         for index, name in enumerate(self.classes):
@@ -187,6 +228,36 @@ class MulticlassClassifierOptimizer(object):
         df_scores = df_scores.set_index('Class')
         
         return df_scores.transpose()
+
+    def plot_curves(self, X=None, y=None, n_bins=10):
+        if X is None or y is None:
+            self.plot_curves_base(
+                y_true=None,
+                y_score=None,
+                n_bins=n_bins)
+        else:
+            self.plot_curves_base(
+                y_true=MulticlassClassifierOptimizer.one_hot_encode(y),
+                y_score=self.predict_proba(X),
+                n_bins=n_bins)
+
+    def plot_curves_base(self, y_true=None, y_score=None, n_bins=10):
+        
+        if y_true is None or y_score is None:
+            y_true = self.y_true
+            y_score = self.y_score
+
+        for index, name in self.classes:
+            BinaryClassifierHelper.plot_curves(
+                title=c_name.upper(), 
+                y_true=y_true[:, i], 
+                y_score=y_score[:, i],
+                best_threshold=self.thresholds[i],
+                n_bins=n_bins)
+
+    @staticmethod
+    def optimizable_model(model):
+        return callable(getattr(model, 'predict_proba', None))
 
     @staticmethod
     def predict_from_score(thresholds, y_score):
@@ -269,6 +340,14 @@ class MulticlassClassifierOptimizer(object):
                 result.x)
                 
         return np.array(thresholds)
+
+    @staticmethod
+    def fitted_model(model):
+        try:
+            skuv.check_is_fitted(model)
+            return True
+        except skx.NotFittedError:
+            return False
 
 
 class BinaryClassifierHelper(object):
@@ -402,7 +481,7 @@ class BinaryClassifierHelper(object):
         return recall_, fallout_, precision_
 
     @staticmethod
-    def plot_curves(title, y_true, y_score, n_bins=10, best_threshold=None):
+    def plot_curves(title, y_true, y_score, best_threshold=None, n_bins=10):
 
         # syle
         GraphicsStatics.initialize_matplotlib_styles()

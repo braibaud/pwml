@@ -12,11 +12,32 @@ def md5(filepath):
     return hash_md5.hexdigest()
 
 
+def save_ndarray(filepath, data):
+    np.save(
+        file=filepath, 
+        arr=data)
+    return filepath
+
+def load_ndarray(filepath):
+    np.load(
+        file=filepath,
+        allow_pickle=True)
+
+
+def save_cache_dict_file(filepath, dict):
+    return save_ndarray(
+        filepath=filepath,
+        data=np.array(dict, dtype=object))
+
+def load_cache_dict_file(filepath):
+    return load_ndarray(
+        filepath=filepath)[()]
+
+
 def load_from_npz(filepath):
     with np.load(filepath, allow_pickle=True) as npz_file:
         data = dict(npz_file.items())
     return data
-
 
 def save_to_npz(filepath, data_dict):
     np.savez_compressed(

@@ -9,15 +9,19 @@ import datetime as dt
 import time as ti
 import itertools as it
 import sklearn as sk
-import sklearn.preprocessing as skp
-import sklearn.model_selection as skms
-import sklearn.pipeline as skpl
-import sklearn.decomposition as skd
-import sklearn.linear_model as sklm
-import sklearn.ensemble as skle
-import sklearn.neighbors as skln
-import sklearn.dummy as sky
-import sklearn.calibration as skc
+
+import sklearn as sk
+from sklearn import preprocessing as skp
+from sklearn import model_selection as skms
+from sklearn import pipeline as skpl
+from sklearn import decomposition as skd
+from sklearn import linear_model as sklm
+from sklearn import ensemble as skle
+from sklearn import neighbors as skln
+from sklearn import dummy as sky
+from sklearn import metrics as skm
+from sklearn import calibration as skc
+from sklearn.utils import validation as skuv
 
 from ..utilities import imagehelpers as ih
 from ..utilities import httphelpers as hh
@@ -361,12 +365,6 @@ class HierarchyElement(object):
                             class_weight='balanced',
                             n_jobs=2)))
 
-                # elif classifier_name == 'KNeighborsClassifier':
-                #     steps.append(
-                #         (classifier_name, skln.KNeighborsClassifier(
-                #             weights='distance',
-                #             n_jobs=2)))
-
                 # Create a pipeline for the work to be done
                 pipe = skpl.Pipeline(steps)
 
@@ -400,12 +398,10 @@ class HierarchyElement(object):
                     seconds=int(round(ti.time() - start_time)))
 
                 # capture elapsed time
-                self.tune_params['classifiers'][classifier_name]['fit_time'] = elapsed_time.total_seconds(
-                )
+                self.tune_params['classifiers'][classifier_name]['fit_time'] = elapsed_time.total_seconds()
 
                 # capture all tuning parameters
-                self.tune_params['classifiers'][classifier_name]['parameters'].update(
-                    search.best_params_)
+                self.tune_params['classifiers'][classifier_name]['parameters'].update(search.best_params_)
 
                 # keep the best estimator
                 self.tune_params['classifiers'][classifier_name]['best_estimator'] = search.best_estimator_
@@ -424,10 +420,6 @@ class HierarchyElement(object):
 
                 print(
                     '        -> Tuning time: {0} ({1}s)'.format(elapsed_time, elapsed_time.total_seconds()))
-
-                # if self.tune_params['classifiers'][classifier_name]['results']['test'] > 0.99:
-                #     print('        -> Skipping other classifiers as test score > 99%')
-                #     break
 
         else:
             classifier_name = 'DummyRegressor'
@@ -468,30 +460,17 @@ class HierarchyElement(object):
 
         # We need to check whether the best estimator implements the 'predict_proba' method.
         # If it does, we can 1) calibrate the estimator and 2) compute the optimized thresholds. 
-        has_predict_proba = callable(getattr(best_estimator, 'predict_proba', None))
-
-        if has_predict_proba:
+        if ch.MulticlassClassifierOptimizer.optimizable_model(best_estimator):
 
             # Create a calibrated estimator
-            calibrated_estimator = skc.CalibratedClassifierCV(
-                base_estimator=best_estimator,
-                cv='prefit')
+            optimized_estimator = ch.MulticlassClassifierOptimizer(
+                model=best_estimator,
+                classes=self.classes,
+                scoring_function=ch.BinaryClassifierHelper.f1_score_alt)
 
-            # Fit it
-            calibrated_estimator.fit(
+            self.estimator = optimized_estimator.fit(
                 X=self.X,
                 y=self.y)
-
-            self.estimator = calibrated_estimator
-
-            # Prepare optimized thresholds
-            y_te_score = self.estimator.predict_proba(X_te)
-            y_te_true = ch.y_to_y_true(y_te)
-
-            self.tune_params['best_thresholds'] = ch.get_optimized_thresholds(
-                y_true=y_te_true,
-                y_score=y_te_score,
-                score=ch.score_f1_invert)
         else:
             self.estimator = self.tune_params['classifiers'][best_estimator_name]['best_estimator']
 
@@ -502,18 +481,20 @@ class HierarchyElement(object):
             best_estimator_name,
             self.tune_params['best_score']))
 
-    def plot_curves(self, X, y, class_name=None):
-        # Prepare optimized thresholds
-        y_score = self.estimator.predict_proba(X)
-        y_true = ch.y_to_y_true(y)
+    def plot_curves(self, X, y, n_bins=10):
 
-        for i, c_name in enumerate(self.classes):
-            if class_name is None or class_name == c_name:
-                ch.plot_curves(
-                    title=c_name.upper(),
-                    best_threshold=self.tune_params['best_thresholds'][i], 
-                    y_true=y_true[:, i], 
-                    y_score=y_score[:, i])
+        if isinstance(self.estimator, ch.MulticlassClassifierOptimizer):
+            self.estimator.plot_curves(
+                X=X,
+                y=y,
+                n_bins=n_bins)
+
+    def get_metrics_by_class(self, X, y):
+
+        if isinstance(self.estimator, ch.MulticlassClassifierOptimizer):
+            self.estimator.get_metrics_by_class(
+                X=X,
+                y=y)
 
     def save_data(self, filename):
         fh.save_to_npz(
@@ -521,15 +502,6 @@ class HierarchyElement(object):
             {
                 'data': self.data,
                 'classes': self.classes
-            })
-
-        return filename
-
-    def save_cache(self, filename):
-        fh.save_to_npz(
-            filename,
-            {
-                'data': self.data
             })
 
         return filename
@@ -644,12 +616,6 @@ class HierarchicalClassifierModel(object):
     def save_data(self, filename):
         self.hierarchy.save_data(filename)
 
-    def register_default_embedders(self):
-        self.register_embedder(emb.CategoryEmbedder())
-        self.register_embedder(emb.TextEmbedder())
-        self.register_embedder(emb.NumericEmbedder())
-        self.register_embedder(emb.LongTextEmbedder())
-
     def save_model(self, filepath, include_data=False):
         model_filepath = fh.save_to_pickle(
             filepath=filepath,
@@ -721,13 +687,28 @@ class HierarchicalClassifierModel(object):
     def register_embedder(self, embedder):
         self.embedders[embedder.input_type] = embedder
 
-    def load_from_csv(self, input_file, sep=',', header=0, cache={}):
+    def register_default_embedders(self):
+        self.register_embedder(emb.CategoryEmbedder())
+        self.register_embedder(emb.NumericEmbedder())
+        self.register_embedder(emb.TextEmbedder(**emb.NNLM_EN_DIM128))
+        self.register_embedder(emb.TextEmbedder(**emb.UNIVERSAL_SENTENCE_ENCODER_LARGE))
+
+    def load_embedders_cache(self, path):
+        for _, value in self.embedders.items():
+            value.load_cache(
+                path=path)
+
+    def save_embedders_cache(self, path):
+        for _, value in self.embedders.items():
+            value.save_cache(
+                path=path)
+
+    def load_from_csv(self, input_file, sep=',', header=0):
         self.load_from_dataframe(
             data=pd.read_csv(
                 filepath_or_buffer=input_file,
                 sep=sep,
-                header=header),
-            cache=cache)
+                header=header))
 
     @staticmethod
     def analyze_csv(input_file, sep=',', header=0):
@@ -778,7 +759,7 @@ class HierarchicalClassifierModel(object):
 
         return np.array(X, dtype=float), np.array(y, dtype=str)
 
-    def load_from_dataframe(self, data, subset='training', cache={}):
+    def load_from_dataframe(self, data, subset='training'):
 
         if self.hierarchy is None or subset == 'training':
 
@@ -795,7 +776,6 @@ class HierarchicalClassifierModel(object):
 
             self.hierarchy = self._load_from_dataframe(
                 data=data,
-                cache=cache,
                 parent_output_feature=None,
                 output_feature=self.output_feature_hierarchy,
                 filter_value=None,
@@ -807,10 +787,9 @@ class HierarchicalClassifierModel(object):
             self._dataload_from_dataframe(
                 element=self.hierarchy,
                 data=data,
-                cache=cache,
                 subset=subset)
 
-    def _dataload_from_dataframe(self, element, data, cache, subset='training'):
+    def _dataload_from_dataframe(self, element, data, subset='training'):
 
         print('Processing output-feature "{0}" for path "{1}" for subset "{2}".'.format(
             element.output_feature.feature_name,
@@ -843,11 +822,8 @@ class HierarchicalClassifierModel(object):
                     'Invalid input (missing one or more features): "{0}".'.format(r_dict))
 
             if r_dict[element.output_feature.feature_name] in element.classes:
-                x.append(
-                    self._get_vector(r_dict, r_dict['Index'], cache))
-
-                y.append(
-                    element.classes.index(r_dict[element.output_feature.feature_name]))
+                x.append(self._get_vector(r_dict))
+                y.append(element.classes.index(r_dict[element.output_feature.feature_name]))
             else:
                 print('  -> Unknown class: {0}'.format(r_dict[element.output_feature.feature_name]))
 
@@ -873,10 +849,9 @@ class HierarchicalClassifierModel(object):
             self._dataload_from_dataframe(
                 element=child_element,
                 data=_data,
-                cache=cache,
                 subset=subset)
 
-    def _load_from_dataframe(self, data, cache, parent_output_feature, output_feature, filter_value, depth, path):
+    def _load_from_dataframe(self, data, parent_output_feature, output_feature, filter_value, depth, path):
 
         element = HierarchyElement()
         element.parent_output_feature = parent_output_feature
@@ -923,11 +898,8 @@ class HierarchicalClassifierModel(object):
                 raise OverflowError(
                     'Invalid input (missing one or more features): "{0}".'.format(r_dict))
 
-            x.append(
-                self._get_vector(r_dict, r_dict['Index'], cache))
-
-            y.append(
-                element.classes.index(r_dict[element.output_feature.feature_name]))
+            x.append(self._get_vector(r_dict))
+            y.append(element.classes.index(r_dict[element.output_feature.feature_name]))
 
             index = index + 1
 
@@ -949,7 +921,6 @@ class HierarchicalClassifierModel(object):
             for class_value in element.classes:
                 child_element = self._load_from_dataframe(
                     data=_data,
-                    cache=cache,
                     parent_output_feature=element.output_feature,
                     output_feature=element.output_feature.child_feature,
                     filter_value=class_value,
@@ -1024,41 +995,19 @@ class HierarchicalClassifierModel(object):
                     output=output,
                     append_proba=append_proba)
 
-    def _get_vector(self, input, index=None, cache=None):
+    def _get_vector(self, input):
 
-        _x = HierarchicalClassifierModel.try_and_get_from_cache(index, cache)
+        _x = None
 
-        if _x is None:
-            for input_feature in self.input_features:
-                _vect = self.embedders[input_feature.feature_type].embed_data(
-                    input[input_feature.feature_name],
-                    input_feature)
+        for input_feature in self.input_features:
+            _vect = self.embedders[input_feature.feature_type].embed_data(
+                input[input_feature.feature_name],
+                input_feature)
 
-                # append to the vector
-                if _x is None:
-                    _x = _vect.copy()
-                else:
-                    _x = np.append(_x, _vect)
-
-            if index is not None and cache is not None:
-                cache[index] = _x
+            # append to the vector
+            if _x is None:
+                _x = _vect.copy()
+            else:
+                _x = np.append(_x, _vect)
 
         return _x
-
-    @staticmethod
-    def try_and_get_from_cache(index, cache):
-        if cache is None:
-            return None
-        elif index is None:
-            return None
-        else:
-            if type(cache).__name__ == 'dict':
-                if index in cache:
-                    return cache[index]
-                else:
-                    return None
-            elif type(cache).__name__ == 'ndarray':
-                if index < cache.shape[0]:
-                    return cache[index]
-                else:
-                    return None
