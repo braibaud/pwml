@@ -4,6 +4,7 @@ import os
 import numpy as np
 import tensorflow_hub as hu
 import sklearn.preprocessing as skp
+import shelve as she
 
 from ..utilities import imagehelpers as ih
 from ..utilities import httphelpers as hh
@@ -33,35 +34,39 @@ IMAGENET_INCEPTION_V3_FEATURE_VECTOR = {
 
 class BaseEmbedder:
 
-    def __init__(self, input_type=None, input_size=None, output_size=None):
+    def __init__(self, input_type=None, input_size=None, output_size=None, cache_path=None):
 
         self.input_type = input_type
         self.input_size = input_size
         self.output_size = output_size
-        self._cache = {}
+        self.cache_path = cache_path
+        self._shelve = None
 
-    def load_cache(self, path, name=None):
-        if name is None:
-            name = '{0}.npy'.format(
+        self.load_cache()
+
+    def __exit__(self, *exc_info):
+        self.save_cache()
+
+    def load_cache(self):
+        
+        cache_path = None
+
+        if os.path.exists(self.cache_path):
+            cache_path = os.path.join(
+                self.cache_path, 
                 self.input_type)
+        else:
+            cache_path = self.input_type
 
-        cache_filepath = os.path.join(path, name)
+        self._shelve = she.open(
+            filename=cache_path)
 
-        if os.path.exists(cache_filepath):
-            self._cache.update(
-                fh.load_cache_dict_file(
-                    filepath=cache_filepath))
+    def save_cache(self):
+        self._shelve.close()
 
-    def save_cache(self, path, name=None):
-        if name is None:
-            name = '{0}.npy'.format(
-                self.input_type)
-
-        cache_filepath = os.path.join(path, name)
-
-        fh.save_cache_dict_file(
-            filepath=cache_filepath,
-            dict=self._cache)
+    def flush_cache(self):
+        self.save_cache()
+        self.load_cache()
 
     def data_empty(self, data, feature):
         return data
@@ -84,25 +89,26 @@ class BaseEmbedder:
 
         embedding = None
 
-        if data in self._cache:
-            embedding = self._cache[data]
+        if data in self._shelve:
+            embedding = self._shelve[data]
         else:
             embedding = self.data_embedding(
                 data=data_prepared, 
                 feature=feature)
             
-            self._cache[data] = embedding
+            self._shelve[data] = embedding
         
         return embedding
 
 
 class CategoryEmbedder(BaseEmbedder):
 
-    def __init__(self, input_size=None, output_size=None):
+    def __init__(self, input_size=None, output_size=None, cache_path=None):
         super().__init__(
             input_type='category',
             input_size=input_size,
-            output_size=output_size)
+            output_size=output_size,
+            cache_path=cache_path)
 
     def data_empty(self, data, feature):
         empty_data = None
@@ -130,11 +136,12 @@ class CategoryEmbedder(BaseEmbedder):
 
 class NumericEmbedder(BaseEmbedder):
 
-    def __init__(self, default_value=0.0):
+    def __init__(self, default_value=0.0, cache_path=None):
         super().__init__(
             input_type='numeric',
             input_size=None,
-            output_size=None)
+            output_size=None, 
+            cache_path=cache_path)
 
         self.default_value = default_value
 
@@ -151,11 +158,12 @@ class NumericEmbedder(BaseEmbedder):
 
 class BaseHubEmbedder(BaseEmbedder):
 
-    def __init__(self, input_type=None, input_size=None, output_size=None, model_url=None):
+    def __init__(self, input_type=None, input_size=None, output_size=None, model_url=None, cache_path=None):
         super().__init__(
             input_type=input_type,
             input_size=input_size,
-            output_size=output_size)
+            output_size=output_size, 
+            cache_path=cache_path)
 
         self.model = hu.load(model_url)
         self._empty = np.array([0]*output_size, np.float64)

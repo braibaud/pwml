@@ -13,15 +13,15 @@ def md5(filepath):
 
 
 def save_ndarray(filepath, data):
-    np.save(
+    np.savez_compressed(
         file=filepath, 
-        arr=data)
+        x=data)
     return filepath
 
 def load_ndarray(filepath):
     np.load(
         file=filepath,
-        allow_pickle=True)
+        allow_pickle=True)['x']
 
 
 def save_cache_dict_file(filepath, dict):

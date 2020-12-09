@@ -575,16 +575,18 @@ class HierarchyElement(object):
 
 class HierarchicalClassifierModel(object):
 
-    def __init__(self, model_name, experiment_name, input_features, output_feature_hierarchy, max_nb_categories=128):
+    def __init__(self, model_name, experiment_name, input_features, output_feature_hierarchy, cache_path=None, max_nb_categories=128):
         self.embedders = {}
         self.model_name = model_name
         self.experiment_name = experiment_name
         self.input_features = input_features
         self.output_feature_hierarchy = output_feature_hierarchy
+        self.cache_path = cache_path
         self.max_nb_categories = max_nb_categories
         self.hierarchy = None
 
-        self.register_default_embedders()
+        self.register_default_embedders(
+            cache_path=cache_path)
 
     def save_configuration(self, include_data=False):
         configuration = {
@@ -687,21 +689,15 @@ class HierarchicalClassifierModel(object):
     def register_embedder(self, embedder):
         self.embedders[embedder.input_type] = embedder
 
-    def register_default_embedders(self):
-        self.register_embedder(emb.CategoryEmbedder())
-        self.register_embedder(emb.NumericEmbedder())
-        self.register_embedder(emb.TextEmbedder(**emb.NNLM_EN_DIM128))
-        self.register_embedder(emb.TextEmbedder(**emb.UNIVERSAL_SENTENCE_ENCODER_LARGE))
+    def register_default_embedders(self, cache_path):
+        self.register_embedder(emb.CategoryEmbedder(cache_path=cache_path))
+        self.register_embedder(emb.NumericEmbedder(cache_path=cache_path))
+        self.register_embedder(emb.TextEmbedder(cache_path=cache_path, **emb.NNLM_EN_DIM128))
+        self.register_embedder(emb.TextEmbedder(cache_path=cache_path, **emb.UNIVERSAL_SENTENCE_ENCODER_LARGE))
 
-    def load_embedders_cache(self, path):
+    def flush_embedders_cache(self):
         for _, value in self.embedders.items():
-            value.load_cache(
-                path=path)
-
-    def save_embedders_cache(self, path):
-        for _, value in self.embedders.items():
-            value.save_cache(
-                path=path)
+            value.flush_cache()
 
     def load_from_csv(self, input_file, sep=',', header=0):
         self.load_from_dataframe(
