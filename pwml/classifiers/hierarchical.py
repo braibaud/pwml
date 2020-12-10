@@ -492,7 +492,7 @@ class HierarchyElement(object):
     def get_metrics_by_class(self, X, y):
 
         if isinstance(self.estimator, ch.MulticlassClassifierOptimizer):
-            self.estimator.get_metrics_by_class(
+            return self.estimator.get_metrics_by_class(
                 X=X,
                 y=y)
 

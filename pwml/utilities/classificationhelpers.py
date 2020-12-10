@@ -175,15 +175,15 @@ class MulticlassClassifierOptimizer(object):
 
     def get_metrics_by_class(self, X=None, y=None):
         if X is None or y is None:
-            self.get_metrics_by_class_base(
+            return self.get_metrics_by_class_base(
                 y_true=None,
                 y_score=None)
         else:
-            self.get_metrics_by_class_base(
+            return self.get_metrics_by_class_base(
                 y_true=MulticlassClassifierOptimizer.one_hot_encode(y),
                 y_score=self.predict_proba(X))
 
-    def get_metrics_by_class_base(self, y_true=None, y_score=None):
+    def get_metrics_by_class_base(self, y_true=None, y_score=None, transpose=False):
         
         if y_true is None or y_score is None:
             y_true = self.y_true
@@ -210,8 +210,8 @@ class MulticlassClassifierOptimizer(object):
                 'Actual Positive': fn + tp,
                 'Predicted Negative': tn + fn,
                 'Predicted Positive': fp + tp,
-                'Correctly Classified': tn + tp,
-                'Incorrectly Classified': fn + fp,
+                'Predicted Correctly': tn + tp,
+                'Predicted Incorrectly': fn + fp,
                 'Accuracy': float(tn + tp) / float(tn + fp + fn + tp),
                 'Precision': BinaryClassifierHelper.precision(tn, fp, fn, tp),
                 'Recall': BinaryClassifierHelper.recall(tn, fp, fn, tp),
@@ -247,12 +247,12 @@ class MulticlassClassifierOptimizer(object):
             y_true = self.y_true
             y_score = self.y_score
 
-        for index, name in self.classes:
+        for index, name in enumerate(self.classes):
             BinaryClassifierHelper.plot_curves(
-                title=c_name.upper(), 
-                y_true=y_true[:, i], 
-                y_score=y_score[:, i],
-                best_threshold=self.thresholds[i],
+                title=name.upper(), 
+                y_true=y_true[:, index], 
+                y_score=y_score[:, index],
+                best_threshold=self.thresholds[index],
                 n_bins=n_bins)
 
     @staticmethod
@@ -549,9 +549,9 @@ class BinaryClassifierHelper(object):
         
         ax[0].set_ylim([-0.1, 1.1])
         
-        ax[0].set_xlabel('FPR (Fall-Out)', fontweight='bold')
+        ax[0].set_xlabel('Fallout', fontweight='bold')
         
-        ax[0].set_ylabel('TPR (Recall)', fontweight='bold')
+        ax[0].set_ylabel('Recall', fontweight='bold')
         
         ax[0].set_title(
             'AUROC = {0:.2f}'.format(
@@ -575,7 +575,7 @@ class BinaryClassifierHelper(object):
                 color=roc_color)
             
             ax[0].annotate(
-                '  t = {0:.1f}  '.format(d), 
+                '  t = {0:.1f}  '.format(threshold), 
                 (fpr, tpr_recall),
                 ha='right',
                 rotation=-45,
@@ -602,9 +602,9 @@ class BinaryClassifierHelper(object):
             alpha=0.2,
             color=pr_color)
             
-        ax[1].set_xlabel('TPR (Recall)', fontweight='bold')
+        ax[1].set_xlabel('Recall', fontweight='bold')
             
-        ax[1].set_ylabel('PPV (Precision)', fontweight='bold')
+        ax[1].set_ylabel('Precision', fontweight='bold')
             
         ax[1].set_xlim([-0.1, 1.1])
             
@@ -632,7 +632,7 @@ class BinaryClassifierHelper(object):
                 color=pr_color)
             
             ax[1].annotate(
-                '  t = {0:.1f}  '.format(d), 
+                '  t = {0:.1f}  '.format(threshold), 
                 (tpr_recall, precision),
                 ha='left',
                 rotation=45,
@@ -660,12 +660,12 @@ class BinaryClassifierHelper(object):
         ax[2].plot(
             threshold_value,
             tpr_v,
-            label='TPR (Recall)')
+            label='Recall')
 
         ax[2].plot(
             threshold_value, 
             ppv_v, 
-            label='PPV (Precision)')
+            label='Precision')
 
         if best_threshold is not None:
             
