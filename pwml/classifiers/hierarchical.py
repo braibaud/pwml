@@ -269,58 +269,7 @@ class HierarchyElement(object):
                 X_te.shape[0],
                 len(self.classes)))
 
-            while m.floor(X_tr.shape[0] / 5.0) < 2*len(self.classes):
-                print('    -> Adjusting training dataset size. Current size: "{0}"; Number of classes "{1}".'.format(
-                    X_tr.shape[0],
-                    len(self.classes)))
-
-                X_tr = np.append(X_tr, X_tr.copy(), axis=0)
-                y_tr = np.append(y_tr, y_tr.copy(), axis=0)
-
-            # if X_tr.shape[0] < 2*len(self.classes):
-
-            #     print('    -> The number of training samples ({0}) is smaller than twice the number of classes ({1}).'.format(
-            #         X_tr.shape[0],
-            #         len(self.classes)))
-
-            # if X_tr.shape[0] < 2*len(self.classes):
-
-            #     print('    -> The number of training samples ({0}) is too small.'.format(
-            #         X_tr.shape[0],
-            #         len(self.classes)))
-
-
-            # # while X_tr.shape[0] < 2*len(self.classes):
-            # #     print('    -> Adjusting training dataset size. Current size: "{0}"; Number of classes "{1}".'.format(
-            # #         X_tr.shape[0],
-            # #         len(self.classes)))
-
-            # #     X_tr = np.append(X_tr, X_tr.copy(), axis=0)
-            # #     y_tr = np.append(y_tr, y_tr.copy(), axis=0)
-
-            # # while m.floor(X_tr.shape[0] / 5) < 2*len(self.classes):
-            # #     print('    -> Adjusting training dataset size. Current size: "{0}"; Number of classes "{1}".'.format(
-            # #         X_tr.shape[0],
-            # #         len(self.classes)))
-
-            # #     X_tr = np.append(X_tr, X_tr.copy(), axis=0)
-            # #     y_tr = np.append(y_tr, y_tr.copy(), axis=0)
-
-            # # while X_te.shape[0] < 2*len(self.classes):
-            # #     print('    -> Adjusting testing dataset size. Current size: "{0}"; Number of classes "{1}".'.format(
-            # #         X_te.shape[0],
-            # #         len(self.classes)))
-
-            # #     X_te = np.append(X_te, X_te.copy(), axis=0)
-            # #     y_te = np.append(y_te, y_te.copy(), axis=0)
-
             for classifier_name, classifier_value in classifiers.items():
-
-                # if X_tr.shape[0] > 10000 and classifier_name == 'KNeighborsClassifier':
-                #     print('    -> Skipping KNeighborsClassifier as training set too large ({0} > 10000)'.format(
-                #         X_tr.shape[0]))
-
-                #     continue
 
                 print('    -> Tuning "{0}"'.format(classifier_name))
 
@@ -462,6 +411,8 @@ class HierarchyElement(object):
         # If it does, we can 1) calibrate the estimator and 2) compute the optimized thresholds. 
         if ch.MulticlassClassifierOptimizer.optimizable_model(best_estimator):
 
+            print('    -> Optimizing "{0}"'.format(classifier_name))
+
             # Create a calibrated estimator
             optimized_estimator = ch.MulticlassClassifierOptimizer(
                 model=best_estimator,
@@ -513,7 +464,29 @@ class HierarchyElement(object):
         self.data = d['data']
         self.classes = d['classes']
 
-    def set_min_samples_per_class(self, min_samples_per_class=2):
+    def get_min_samples_per_class(self, min_samples_per_class=10):
+
+        for subset in self.data:
+            if self.subset_has_data(subset):
+                indices = np.arange(len(self.data[subset]['y']))
+
+                for i, name in enumerate(self.classes):
+                    c_indices = indices[(self.data[subset]['y'] == i)]
+
+                    if len(c_indices) < min_samples_per_class:
+                        yield {
+                            'path': self.path,
+                            'subset': subset,
+                            'class': name,
+                            'n_classes': len(c_indices)
+                        }
+
+        for child in self.children:
+            for result in child.get_min_samples_per_class(
+                min_samples_per_class=min_samples_per_class):
+                yield result
+
+    def set_min_samples_per_class(self, min_samples_per_class=10):
 
         for subset in self.data:
 
@@ -653,6 +626,11 @@ class HierarchicalClassifierModel(object):
                 show_parameters=show_parameters)).sort_values(
                     by=['depth', 'path'],
                     ascending=[True, True])
+
+    def get_min_samples_per_class(self, min_samples_per_class=10):
+        return pd.DataFrame.from_records(
+            data=self.hierarchy.get_min_samples_per_class(
+                min_samples_per_class=min_samples_per_class))
 
     def tune_classifiers(
         self,
@@ -833,8 +811,8 @@ class HierarchicalClassifierModel(object):
             element.data[subset]['X'] = np.array(x, dtype=np.float64)
             element.data[subset]['y'] = np.array(y, dtype=np.int32)
 
-            element.set_min_samples_per_class(
-                min_samples_per_class=25)
+            # element.set_min_samples_per_class(
+            #     min_samples_per_class=25)
 
             print(' -> There are {0} classes and {1} samples.'.format(
                 len(element.classes),

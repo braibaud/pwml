@@ -91,32 +91,38 @@ class MulticlassClassifierOptimizer(object):
         self.y = y
 
         if not MulticlassClassifierOptimizer.fitted_model(self.model):
+            print('      -> Fitting base model (wasn\'t fitted).')
             self.model.fit(
                 X=X,
                 y=y)
 
         # Create a model calibration
+        print('      -> Creating calibration model.')
         self.calibrated_model = skc.CalibratedClassifierCV(
             base_estimator=self.model,
             cv='prefit')
 
         # Fit it
+        print('      -> Fitting calibration model.')
         self.calibrated_model.fit(
             X=self.X,
             y=self.y)
 
         # Prepare optimized thresholds
+        print('      -> Getting prediction probabilities.')
         self.y_score = self.calibrated_model.predict_proba(
             X=self.X)
 
         self.y_true = MulticlassClassifierOptimizer.one_hot_encode(
             y=self.y)
 
+        print('      -> Optimizing multiclass thresholds.')
         self.thresholds = MulticlassClassifierOptimizer.get_optimized_thresholds(
             scoring_function=self.scoring_function,
             y_true=self.y_true,
             y_score=self.y_score)
 
+        print('      -> Saving optimized prediction scores.')
         self.y_pred_optimized = self.predict_from_score(
             thresholds=self.thresholds,
             y_score=self.y_score)
@@ -173,15 +179,46 @@ class MulticlassClassifierOptimizer(object):
                 class_threshold=class_threshold),
             labels=[0.0, 1.0]).ravel()
 
-    def get_metrics_by_class(self, X=None, y=None):
+    def sort_classes_by_score(self, X, y, scoring_function=None, n_top=10):
+
+        if X is None or y is None:
+            y_true = self.y_true
+            y_score = self.y_score
+        else:
+            y_true = MulticlassClassifierOptimizer.one_hot_encode(y)
+            y_score = self.predict_proba(X)
+
+        if scoring_function is None:
+            scoring_function = self.scoring_function
+
+        records = []
+
+        for index, name in enumerate(self.classes):
+            records.append({
+                'Class': name,
+                'Index': index,
+                'Score': scoring_function(y_true[:, index], y_score[:, index])
+            })
+
+        df_scores = pd.DataFrame.from_records(records)
+        df_scores = df_scores.set_index('Class')
+        df_scores = df_scores.convert_dtypes()
+        df_scores = df_scores.sort_values(by='Score', ascending=False)
+
+        return list(df_scores.head(n_top)['Class'].values)
+
+    def get_metrics_by_class(self, X=None, y=None, transpose=False):
+
         if X is None or y is None:
             return self.get_metrics_by_class_base(
                 y_true=None,
-                y_score=None)
+                y_score=None,
+                transpose=transpose)
         else:
             return self.get_metrics_by_class_base(
                 y_true=MulticlassClassifierOptimizer.one_hot_encode(y),
-                y_score=self.predict_proba(X))
+                y_score=self.predict_proba(X),
+                transpose=transpose)
 
     def get_metrics_by_class_base(self, y_true=None, y_score=None, transpose=False):
         
@@ -226,34 +263,48 @@ class MulticlassClassifierOptimizer(object):
 
         df_scores = pd.DataFrame.from_records(records)
         df_scores = df_scores.set_index('Class')
-        
-        return df_scores.transpose()
+        df_scores = df_scores.convert_dtypes()
 
-    def plot_curves(self, X=None, y=None, n_bins=10):
+        if transpose:
+            return df_scores.transpose()
+        else:
+            return df_scores
+
+    def plot_curves(self, X=None, y=None, n_bins=10, scoring_function=None, n_top=10):
+
+        classes = self.sort_classes_by_score(
+            X=X,
+            y=y,
+            scoring_function=scoring_function,
+            n_top=n_top)
+
         if X is None or y is None:
             self.plot_curves_base(
                 y_true=None,
                 y_score=None,
-                n_bins=n_bins)
+                n_bins=n_bins,
+                classes=classes)
         else:
             self.plot_curves_base(
                 y_true=MulticlassClassifierOptimizer.one_hot_encode(y),
                 y_score=self.predict_proba(X),
-                n_bins=n_bins)
+                n_bins=n_bins,
+                classes=classes)
 
-    def plot_curves_base(self, y_true=None, y_score=None, n_bins=10):
+    def plot_curves_base(self, y_true=None, y_score=None, n_bins=10, classes=None):
         
         if y_true is None or y_score is None:
             y_true = self.y_true
             y_score = self.y_score
 
         for index, name in enumerate(self.classes):
-            BinaryClassifierHelper.plot_curves(
-                title=name.upper(), 
-                y_true=y_true[:, index], 
-                y_score=y_score[:, index],
-                best_threshold=self.thresholds[index],
-                n_bins=n_bins)
+            if (classes is None or len(classes) == 0) or (classes is not None and name in classes):
+                BinaryClassifierHelper.plot_curves(
+                    title=name.upper(), 
+                    y_true=y_true[:, index], 
+                    y_score=y_score[:, index],
+                    best_threshold=self.thresholds[index],
+                    n_bins=n_bins)
 
     @staticmethod
     def optimizable_model(model):
