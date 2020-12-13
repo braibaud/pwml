@@ -246,28 +246,28 @@ class HierarchyElement(object):
         self.tune_params = {}
         self.tune_params['classifiers'] = {}
 
+        if self.subset_has_data('testing'):
+            X_tr = self.X
+            y_tr = self.y
+            X_te = self.data['testing']['X']
+            y_te = self.data['testing']['y']
+        else:
+            # Create training and testing partition (validation
+            # split is handled by the 'StratifiedKFold' object)
+            X_tr, X_te, y_tr, y_te = skms.train_test_split(
+                self.X,
+                self.y,
+                stratify=self.y,
+                shuffle=True,
+                random_state=0,
+                test_size=test_size)
+
+        print('    -> Train size: ({0}); Test size: ({1}) Number of classes ({2}).'.format(
+            X_tr.shape[0],
+            X_te.shape[0],
+            len(self.classes)))
+
         if len(self.classes) > 1:
-
-            if self.subset_has_data('testing'):
-                X_tr = self.X
-                y_tr = self.y
-                X_te = self.data['testing']['X']
-                y_te = self.data['testing']['y']
-            else:
-                # Create training and testing partition (validation
-                # split is handled by the 'StratifiedKFold' object)
-                X_tr, X_te, y_tr, y_te = skms.train_test_split(
-                    self.X,
-                    self.y,
-                    stratify=self.y,
-                    shuffle=True,
-                    random_state=0,
-                    test_size=test_size)
-
-            print('    -> Train size: ({0}); Test size: ({1}) Number of classes ({2}).'.format(
-                X_tr.shape[0],
-                X_te.shape[0],
-                len(self.classes)))
 
             for classifier_name, classifier_value in classifiers.items():
 
@@ -331,7 +331,7 @@ class HierarchyElement(object):
                 search = skms.GridSearchCV(
                     estimator=pipe,
                     param_grid=dict_grid,
-                    scoring='f1_micro',
+                    scoring='f1_weighted',
                     refit=True,
                     cv=kfold,
                     n_jobs=2)
@@ -358,7 +358,9 @@ class HierarchyElement(object):
                 # capture the scores
                 self.tune_params['classifiers'][classifier_name]['results'] = {
                     'validation': search.best_score_,
-                    'test': search.score(X_te, y_te)
+                    'test': search.score(
+                        X=X_te, 
+                        y=y_te)
                 }
 
                 print('        -> Best validation score: {0:.4%}'.format(
@@ -385,8 +387,8 @@ class HierarchyElement(object):
                 ])
 
             estimator.fit(
-                X=self.X,
-                y=self.y)
+                X=X_tr,
+                y=y_tr)
 
             self.tune_params['classifiers'][classifier_name]['results'] = {
                 'validation': 1.0,
@@ -417,11 +419,19 @@ class HierarchyElement(object):
             optimized_estimator = ch.MulticlassClassifierOptimizer(
                 model=best_estimator,
                 classes=self.classes,
-                scoring_function=ch.BinaryClassifierHelper.f1_score_alt)
+                scoring_function=ch.BinaryClassifierHelper.f1_score)
 
             self.estimator = optimized_estimator.fit(
-                X=self.X,
-                y=self.y)
+                X=X_tr,
+                y=y_tr)
+
+            self.tune_params['classifiers'][best_estimator_name]['results']['train_optimized'] = optimized_estimator.score(
+                X=X_tr,
+                y=y_tr)
+
+            self.tune_params['classifiers'][best_estimator_name]['results']['test_optimized'] = optimized_estimator.score(
+                X=X_te,
+                y=y_te)
         else:
             self.estimator = self.tune_params['classifiers'][best_estimator_name]['best_estimator']
 
@@ -432,13 +442,28 @@ class HierarchyElement(object):
             best_estimator_name,
             self.tune_params['best_score']))
 
-    def plot_curves(self, X, y, n_bins=10):
+        if 'test_optimized' in self.tune_params['classifiers'][best_estimator_name]['results']:
+
+            print('    -> Optimized test score: {0:.4%}'.format(
+                self.tune_params['classifiers'][best_estimator_name]['results']['test_optimized']))
+
+    def plot_curve(self, class_name, X, y, n_bins=10):
+
+        if isinstance(self.estimator, ch.MulticlassClassifierOptimizer):
+            self.estimator.plot_curve(
+                class_name=class_name,
+                X=X,
+                y=y,
+                n_bins=n_bins)
+
+    def plot_curves(self, X, y, n_bins=10, n_top=5):
 
         if isinstance(self.estimator, ch.MulticlassClassifierOptimizer):
             self.estimator.plot_curves(
                 X=X,
                 y=y,
-                n_bins=n_bins)
+                n_bins=n_bins,
+                n_top=n_top)
 
     def get_metrics_by_class(self, X, y):
 
