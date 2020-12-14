@@ -106,6 +106,20 @@ class MulticlassClassifierOptimizer(object):
                 X=X,
                 y=y)
 
+        print('      -> Model calibration.')
+
+        self.model = skc.CalibratedClassifierCV(
+            base_estimator=self.model,
+            method='sigmoid',
+            cv='prefit')
+
+        self.model.fit(
+            X=X,
+            y=y,
+            sample_weight=skcw.compute_sample_weight(
+                class_weight='balanced', 
+                y=y))
+
         print('      -> Optimizing multiclass thresholds.')
 
         self.thresholds = MulticlassClassifierOptimizer.get_optimized_thresholds(
@@ -283,6 +297,10 @@ class MulticlassClassifierOptimizer(object):
     def plot_curve(self, class_name, X, y, n_bins=10):
 
         if class_name in self.classes:
+
+            y_true = MulticlassClassifierOptimizer.one_hot_encode(y)
+            y_score = self.predict_proba(X)
+
             index = self.classes.index(class_name)
 
             BinaryClassifierHelper.plot_curves(
