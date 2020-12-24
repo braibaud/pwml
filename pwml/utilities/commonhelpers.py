@@ -14,4 +14,12 @@ def flatten_namevalue_pairs(pairs, separator):
             
     return message[:-1*len(separator)]
 
-
+def shift_array(ar, n):
+    e = np.empty_like(ar)
+    if n >= 0:
+        e[:n] = np.nan
+        e[n:] = ar[:-n]
+    else:
+        e[n:] = np.nan
+        e[:n] = ar[-n:]
+    return e

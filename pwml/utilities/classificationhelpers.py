@@ -25,41 +25,8 @@ from sklearn.utils import validation as skuv
 from sklearn.utils import class_weight as skcw
 
 from . import commonhelpers as cmn
+from . import graphichelpers as gph
 
-
-# Class holding static properties only
-class GraphicsStatics(object):
-    
-    # Globals
-    g_palette = None
-    
-    g_landscape_fig_size = (20, 10)
-    g_square_fig_size = (20, 20)
-    g_portrait_fig_size = (20, 30)
-
-    g_styles_initialized = False
-
-    @staticmethod
-    def initialize_matplotlib_styles():
-
-        if not GraphicsStatics.g_styles_initialized:
-            sns.set()
-            sns.set_style('whitegrid', {'axes.facecolor': '.9'})
-            plt.style.use('fivethirtyeight')
-            sns.set_context('talk')
-
-            # Assign the default palette
-            GraphicsStatics.g_palette = sns.color_palette('Set2', 8)
-
-            sns.set_palette(
-                GraphicsStatics.g_palette)
-
-            pyl.rcParams['figure.figsize'] = GraphicsStatics.g_landscape_fig_size
-            plt.rcParams['figure.figsize'] = GraphicsStatics.g_landscape_fig_size
-            plt.rcParams['axes.labelsize'] = 18
-            plt.rcParams['axes.titlesize'] = 18
-
-            GraphicsStatics.g_styles_initialized = True
 
 
 class MulticlassClassifierOptimizer(object):
@@ -590,7 +557,7 @@ class BinaryClassifierHelper(object):
     def plot_curves(title, y_true, y_score, best_threshold=None, n_bins=10):
 
         # syle
-        GraphicsStatics.initialize_matplotlib_styles()
+        gph.GraphicsStatics.initialize_matplotlib_styles()
 
         roc_color = 'crimson'
         pr_color = 'royalblue'
@@ -600,7 +567,7 @@ class BinaryClassifierHelper(object):
         lw = 2
 
         fig = plt.figure(
-            figsize=GraphicsStatics.g_portrait_fig_size)
+            figsize=gph.GraphicsStatics.g_portrait_fig_size)
 
         ax = []
         
@@ -841,7 +808,7 @@ class BinaryClassifierHelper(object):
             mean_predicted_value, 
             fraction_of_positives,
             'o-',
-            color=GraphicsStatics.g_palette[1],
+            color=gph.GraphicsStatics.get_color(1),
             label='Current')
         
         ax[3].set_xlabel('Mean predicted value', fontweight='bold')
@@ -897,7 +864,7 @@ class BinaryClassifierHelper(object):
             fontsize=14,
             fontstyle='italic',
             bbox={ 
-                'facecolor': GraphicsStatics.g_palette[5], 
+                'facecolor': gph.GraphicsStatics.get_color(5), 
                 'alpha': 0.5, 
                 'pad': 7
             })
@@ -914,7 +881,7 @@ class BinaryClassifierHelper(object):
             fontsize=14,
             fontstyle='italic',
             bbox={ 
-                'facecolor': GraphicsStatics.g_palette[6], 
+                'facecolor': gph.GraphicsStatics.get_color(6), 
                 'alpha': 0.5, 
                 'pad': 7
             })    
