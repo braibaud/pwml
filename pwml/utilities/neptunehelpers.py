@@ -8,8 +8,8 @@ import neptune as npt
 
 from neptunecontrib import api as npta
 from neptunecontrib import hpo as npth
-from neptunecontrib.monitoring import optuna as opt_utils
-from neptunecontrib.monitoring import keras as opt_keras
+from neptunecontrib.monitoring import optuna as nmo
+from neptunecontrib.monitoring import keras as nmk
 
 
 class ExperimentManager(object):
@@ -49,7 +49,7 @@ class ExperimentManager(object):
     @property
     def optuna_callback(self):
         if self.log and self._optuna_callback is None:
-                self._optuna_callback = opt_utils.NeptuneCallback(
+                self._optuna_callback = nmo.NeptuneCallback(
                     experiment=self.experiment)
 
         return self._optuna_callback
@@ -57,7 +57,7 @@ class ExperimentManager(object):
     @property
     def keras_callback(self):
         if self.log and self._keras_callback is None:
-                self._keras_callback = opt_keras.NeptuneCallback(
+                self._keras_callback = nmk.NeptuneCallback(
                     experiment=self.experiment)
 
         return self._keras_callback
@@ -120,9 +120,9 @@ class ExperimentManager(object):
                     tempfile.gettempdir(),
                     '{0}.jpg'.format(name))
 
-                plt.savefig(
+                figure.savefig(
                     fname=file_path, 
-                    dpi=200,
+                    dpi=96,
                     format='jpg',
                     quality=90,
                     bbox_inches='tight')

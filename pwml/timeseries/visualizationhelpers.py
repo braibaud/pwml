@@ -51,7 +51,7 @@ def plot_time_series(title=None, subtitle=None, name=None,
     
     window_size=None,
     include_zero=True,
-    experiment_manager=None):
+    experiment_manager=None, display=True):
 
 
     # syle
@@ -350,9 +350,12 @@ def plot_time_series(title=None, subtitle=None, name=None,
         ax=ax,
         experiment_manager=experiment_manager)
 
-    plt.show()
+    if display:
+        plt.show()
+    else:
+        return fig
 
-def plot_heatmap(data, title=None, subtitle=None, name=None, cbar_label='traffic', xlabel='fiscal week', ylabel='fiscal year', experiment_manager=None):
+def plot_heatmap(data, title=None, subtitle=None, name=None, cbar_label='traffic', xlabel='fiscal week', ylabel='fiscal year', experiment_manager=None, display=True):
 
     # syle
     gph.GraphicsStatics.initialize_matplotlib_styles()
@@ -385,9 +388,12 @@ def plot_heatmap(data, title=None, subtitle=None, name=None, cbar_label='traffic
         ax=ax,
         experiment_manager=experiment_manager)
 
-    plt.show()    
+    if display:
+        plt.show()
+    else:
+        return fig
 
-def plot_seasonal_decomposition(data, title=None, subtitle=None, name=None, period=None, xlabel='', ylabel='traffic', experiment_manager=None):
+def plot_seasonal_decomposition(data, title=None, subtitle=None, name=None, period=None, xlabel='', ylabel='traffic', experiment_manager=None, display=True):
 
     decomposition_obj = seasonal_decompose(
         x=data, 
@@ -453,9 +459,12 @@ def plot_seasonal_decomposition(data, title=None, subtitle=None, name=None, peri
         tight_layout=True,
         experiment_manager=experiment_manager)
 
-    plt.show()
+    if display:
+        plt.show()
+    else:
+        return fig
 
-def plot_autocorrelation(data, title=None, subtitle=None, name=None, lags=None, experiment_manager=None):
+def plot_autocorrelation(data, title=None, subtitle=None, name=None, lags=None, experiment_manager=None, display=True):
 
     # syle
     gph.GraphicsStatics.initialize_matplotlib_styles()
@@ -487,9 +496,12 @@ def plot_autocorrelation(data, title=None, subtitle=None, name=None, lags=None, 
         tight_layout=True,
         experiment_manager=experiment_manager)
 
-    plt.show()
+    if display:
+        plt.show()
+    else:
+        return fig
 
-def plot_time_series_dist(data, title=None, subtitle=None, name=None, bins=15, experiment_manager=None):
+def plot_time_series_dist(data, title=None, subtitle=None, name=None, bins=15, experiment_manager=None, display=True):
 
     # syle
     gph.GraphicsStatics.initialize_matplotlib_styles()
@@ -539,12 +551,15 @@ def plot_time_series_dist(data, title=None, subtitle=None, name=None, bins=15, e
         ax=ax,
         experiment_manager=experiment_manager)
 
-    plt.show()
+    if display:
+        plt.show()
+    else:
+        return fig
 
 def plot_regression_comparison(title=None, subtitle=None, name=None, 
                                actual_train=None, actual_test=None, actual_col='y',
                                forecast_train=None, forecast_test=None, forecast_col='yhat',
-                               experiment_manager=None):
+                               experiment_manager=None, display=True):
 
     # syle
     gph.GraphicsStatics.initialize_matplotlib_styles()
@@ -621,5 +636,7 @@ def plot_regression_comparison(title=None, subtitle=None, name=None,
         ax=ax,
         experiment_manager=experiment_manager)
 
-    plt.show()
-
+    if display:
+        plt.show()
+    else:
+        return fig
